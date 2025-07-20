@@ -862,7 +862,7 @@ const HomePage = ({ onShowEventDetail, onLikeToggle }: { onShowEventDetail: (eve
 
   if (error) {
     return (
-      <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4 text-center">
+      <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4 -text-center">
         <AlertMessage message={error} type="error" />
       </div>
     );
@@ -1232,49 +1232,6 @@ const CreateEventPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEven
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="locationSearch"> Ricerca Posizione (Opzionale) </label>
-          <div className="flex space-x-2">
-            <input
-              type="text"
-              id="locationSearch"
-              value={locationSearch}
-              onChange={(e) => { setLocationSearch(e.target.value); setSelectedLocationIndex(-1); }}
-              onKeyDown={handleKeyDownOnLocationSearch}
-              className="flex-grow px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
-              placeholder="Cerca su Google Maps..."
-            />
-          </div>
-          {
-            loadingLocationSuggestions && (
-              <div className="flex items-center justify-center mt-2 text-gray-600">
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-500 mr-2"> </div>
-                Caricamento suggerimenti...
-              </div>
-            )
-          }
-          {
-            locationSuggestions.length > 0 && (
-              <ul className="bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                {
-                  locationSuggestions.map((suggestion, index) => (
-                    <li
-                      key={suggestion.place_id}
-                      className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${index === selectedLocationIndex ? 'bg-gray-100' : ''}`}
-                      onClick={() => handleSelectLocation(suggestion)}
-                    >
-                      {suggestion.description}
-                    </li>
-                  ))}
-              </ul>
-            )
-          }
-          {
-            locationName && (
-              <p className="text-sm text-gray-600 mt-2"> Posizione selezionata: <span className="font-semibold"> {locationName} </span></p>
-            )
-          }
-        </div>
-        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="taggedUsers"> Tagga Utenti (separati da virgola) </label>
           <input
             type="text"
@@ -1329,11 +1286,11 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [myEvents, setMyEvents] = useState<EventType[]>([]);
-  const [taggedEvents, setTaggedEvents] = useState<EventType[]>([]);
-  const [activeTab, setActiveTab] = useState('myEvents');
+  // const [taggedEvents, setTaggedEvents] = useState<EventType[]>([]); // Commentato come richiesto
+  const [activeTab, setActiveTab] = useState('myEvents'); // Mantiene solo 'myEvents'
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [loadingMyEvents, setLoadingMyEvents] = useState(true);
-  const [loadingTaggedEvents, setLoadingTaggedEvents] = useState(true);
+  // const [loadingTaggedEvents, setLoadingTaggedEvents] = useState(true); // Commentato come richiesto
   const [isFollowing, setIsFollowing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1344,7 +1301,7 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
       if (isMounted) {
         setLoadingProfile(false);
         setLoadingMyEvents(false);
-        setLoadingTaggedEvents(false);
+        // setLoadingTaggedEvents(false); // Commentato come richiesto
         setError("ID utente non fornito per la visualizzazione del profilo.");
       }
       return;
@@ -1359,7 +1316,8 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
           if (currentUserProfile && currentUserProfile.following) {
             setIsFollowing(currentUserProfile.following.includes(userIdToDisplay));
           }
-          // Fetch tagged events only if profile is loaded and we have the username/profileTag
+          // Logica per gli eventi taggati commentata come richiesto
+          /*
           const profileTagForTaggedEvents = fetchedProfile.profileTag || (fetchedProfile.email ? fetchedProfile.email.split('@')[0] : '');
           if (profileTagForTaggedEvents) {
             const taggedEventsQuery = query(
@@ -1388,6 +1346,7 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
               setLoadingTaggedEvents(false); // No profileTag, so no tagged events to fetch
             }
           }
+          */
         } else {
           setProfile(null);
           setError("Profilo utente non trovato.");
@@ -1479,7 +1438,8 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
 
   const isOwnProfile = currentUserId === userIdToDisplay;
 
-  if (loadingProfile || loadingMyEvents || loadingTaggedEvents) {
+  // Modificato per non considerare il caricamento degli eventi taggati
+  if (loadingProfile || loadingMyEvents) { // Removed loadingTaggedEvents
     return <LoadingSpinner message="Caricamento profilo..." />;
   }
 
@@ -1539,17 +1499,21 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
             >
               Eventi Creati ({myEvents.length})
             </button>
+            {/* Bottone "Eventi Taggati" rimosso come richiesto */}
+            {/*
             <button
               onClick={() => setActiveTab('taggedEvents')}
               className={`py-3 px-6 text-lg font-semibold ${activeTab === 'taggedEvents' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
             >
               Eventi Taggati ({taggedEvents.length})
             </button>
+            */}
           </div>
         </div>
 
         <div className="flex flex-col items-center gap-6">
-          {activeTab === 'myEvents' ? (
+          {/* Mostra solo gli eventi creati dall'utente */}
+          {activeTab === 'myEvents' && (
             myEvents.length === 0 ? (
               <p className="text-center text-gray-600 col-span-full mt-10"> Nessun evento creato.</p>
             ) : (
@@ -1570,7 +1534,10 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
                 </div>
               ))
             )
-          ) : (
+          )}
+          {/* Sezione per gli eventi taggati rimossa come richiesto */}
+          {/*
+          {activeTab === 'taggedEvents' ? (
             taggedEvents.length === 0 ? (
               <p className="text-center text-gray-600 col-span-full mt-10"> Nessun evento taggato.</p>
             ) : (
@@ -1591,7 +1558,8 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
                 </div>
               ))
             )
-          )}
+          ) : null}
+          */}
         </div>
       </div>
     </div>
@@ -1716,6 +1684,9 @@ const SettingsPage = ({ onNavigate }: { onNavigate: (page: string, id?: string |
             className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
             required
           />
+          <p className="text-xs text-gray-500 mt-1">
+            Il tuo ID utente univoco di Firebase (`userId`) non può essere modificato. Questo "Tag Profilo" è un nome visualizzato che puoi impostare.
+          </p>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="profileImageFile"> Immagine del Profilo </label>
