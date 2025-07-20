@@ -63,7 +63,7 @@ interface EventData { // Data directly in the Firestore document
   time: string;
   locationName: string;
   locationCoords: { lat: number; lng: number } | null;
-  taggedUsers: string[];
+  taggedUsers: string[]; // <--- This is defined as string[]
   isPublic: boolean;
   creatorId: string;
   likes: string[];
@@ -583,7 +583,8 @@ const EventCard = ({ event, currentUser, onFollowToggle, followingUsers, onEdit,
   // Use userProfile.profileTag for consistency, or email prefix if profileTag is not guaranteed
   const authContext = useAuth();
   const currentUserProfileTag = authContext?.userProfile?.profileTag || (currentUser?.email ? currentUser.email.split('@')[0] : '');
-  const isTaggedEvent = currentUser && event.taggedUsers && event.taggedUsers.includes(currentUserProfileTag);
+  // Ensure event.taggedUsers is an array before calling .includes()
+  const isTaggedEvent = currentUser && (event.taggedUsers || []).includes(currentUserProfileTag);
   const isLiked = !!(currentUser && event.likes && event.likes.includes(currentUser.uid)); // Force to boolean
 
   useEffect(() => {
@@ -712,10 +713,11 @@ const EventCard = ({ event, currentUser, onFollowToggle, followingUsers, onEdit,
             {event.locationName}
           </p>
           {
-            event.taggedUsers && event.taggedUsers.length > 0 && (
+            // Ensure event.taggedUsers is an array before checking length and joining
+            (event.taggedUsers && event.taggedUsers.length > 0) && (
               <p className="flex items-center">
                 <svg className="w-4 h-4 mr-2 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"> </path></svg>
-                Taggati: {event.taggedUsers.join(', ')}
+                Taggati: {(event.taggedUsers || []).join(', ')}
               </p>
             )
           }
@@ -1953,7 +1955,8 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
   const currentEvent = relatedEvents[currentIndex];
   // Ensure profileTag is used for consistency when checking tagged users
   const currentUserProfileTag = userProfile?.profileTag || (currentUser?.email ? currentUser.email.split('@')[0] : '');
-  const isTaggedEvent = currentUser && currentEvent.taggedUsers && currentEvent.taggedUsers.includes(currentUserProfileTag);
+  // Ensure currentEvent.taggedUsers is an array before calling .includes()
+  const isTaggedEvent = currentUser && (currentEvent.taggedUsers || []).includes(currentUserProfileTag);
   const isLiked = !!(currentUser && currentEvent.likes && currentEvent.likes.includes(currentUser.uid)); // Force to boolean
 
   useEffect(() => {
@@ -2097,10 +2100,11 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
               {currentEvent.locationName || 'Nessuna posizione specificata'}
             </p>
             {
-              currentEvent.taggedUsers && currentEvent.taggedUsers.length > 0 && (
+              // Ensure currentEvent.taggedUsers is an array before checking length and joining
+              (currentEvent.taggedUsers && currentEvent.taggedUsers.length > 0) && (
                 <p className="flex items-center">
                   <svg className="w-5 h-5 mr-2 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"> </path></svg>
-                  Taggati: {currentEvent.taggedUsers.join(', ')}
+                  Taggati: {(currentEvent.taggedUsers || []).join(', ')}
                 </p>
               )
             }
@@ -2193,7 +2197,7 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
 };
 
 // Notifications Component
-const NotificationsPage = () => {
+const NotificationsPage = ({ setUnreadNotificationsCount }: { setUnreadNotificationsCount: React.Dispatch<React.SetStateAction<number>> }) => {
   const authContext = useAuth();
   const userId = authContext?.userId;
   const [notifications, setNotifications] = useState<NotificationType[]>([]);
@@ -2241,7 +2245,7 @@ const NotificationsPage = () => {
       isMounted = false; // Cleanup flag
       unsubscribe();
     };
-  }, [userId]);
+  }, [userId, setUnreadNotificationsCount]); // Aggiunto setUnreadNotificationsCount alle dipendenze
 
   const markAsRead = async (notificationId: string) => {
     try {
@@ -2915,7 +2919,8 @@ const App = () => {
             {currentPage === 'settings' && <SettingsPage onNavigate={handleNavigate} />}
             {currentPage === 'search' && <SearchPage onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} />}
             {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay userIdToDisplay={viewedUserId} onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onEditEvent={async () => { }} onDeleteEvent={async () => { }} onRemoveTagFromEvent={async () => { }} />}
-            {currentPage === 'notifications' && <NotificationsPage />}
+            {/* Pass setUnreadNotificationsCount to NotificationsPage */}
+            {currentPage === 'notifications' && <NotificationsPage setUnreadNotificationsCount={setUnreadNotificationsCount} />}
           </main>
           {
             showEventDetailModal && selectedEventForModal && (
