@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore'; // Importato writeBatch
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch, increment } from 'firebase/firestore'; // Importato increment
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
@@ -88,18 +88,18 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
 
       // Aggiorna il conteggio dei commenti nel documento pubblico
       batch.update(publicEventRef, {
-        commentCount: (currentEvent.commentCount || 0) + 1,
-        likes: currentEvent.likes || [] // Mantiene i like invariati
+        commentCount: increment(1) // Usa FieldValue.increment per il contatore
       });
 
       // Se l'utente corrente è il creatore dell'evento, aggiorna anche il documento privato
-      if (currentEvent.creatorId === userId) {
+      // Assicurati che l'evento esista nella collezione privata prima di tentare l'aggiornamento
+      const privateEventDocSnap = await getDoc(privateEventRef);
+      if (privateEventDocSnap.exists()) {
         batch.update(privateEventRef, {
-          commentCount: (currentEvent.commentCount || 0) + 1,
-          likes: currentEvent.likes || [] // Mantiene i like invariati
+          commentCount: increment(1) // Usa FieldValue.increment per il contatore
         });
       }
-
+      
       // Esegui tutte le operazioni del batch
       await batch.commit();
 

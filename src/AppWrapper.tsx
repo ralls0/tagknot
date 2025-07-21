@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
-import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, arrayRemove, arrayUnion, writeBatch, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, arrayRemove, arrayUnion, writeBatch, addDoc, serverTimestamp, Timestamp, FieldValue, increment } from 'firebase/firestore'; // Importato increment
 
 // Import Firebase services from the centralized config file
 import { auth, db } from './firebaseConfig';
@@ -184,22 +184,20 @@ const App = () => {
         return;
       }
 
-      const currentLikes = eventDocSnap.data().likes || [];
-      const newLikes = isLiked ? arrayRemove(userId) : arrayUnion(userId);
-      const newLikeCount = isLiked ? currentLikes.length - 1 : currentLikes.length + 1;
+      const likeUpdate = isLiked ? arrayRemove(userId) : arrayUnion(userId);
+      const likeCountIncrement = isLiked ? increment(-1) : increment(1);
 
       // Aggiorna il documento pubblico
       batch.update(publicEventRef, {
-        likes: newLikes,
-        // Assicurati che il conteggio sia aggiornato solo se il campo esiste, altrimenti inizializza
-        commentCount: eventDocSnap.data().commentCount || 0 // Mantiene il conteggio commenti invariato
+        likes: likeUpdate,
+        likesCount: likeCountIncrement // Usa FieldValue.increment per il contatore
       });
 
       // Se l'utente corrente è il creatore dell'evento, aggiorna anche il documento privato
       if (eventDocSnap.data().creatorId === userId) {
         batch.update(privateEventRef, {
-          likes: newLikes,
-          commentCount: eventDocSnap.data().commentCount || 0 // Mantiene il conteggio commenti invariato
+          likes: likeUpdate,
+          likesCount: likeCountIncrement // Usa FieldValue.increment per il contatore
         });
       }
 
