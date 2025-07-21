@@ -10,15 +10,17 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificationsCount }) => {
   const { userProfile } = useAuth();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false); // Nuovo stato per il menu desktop
+  // isMenuOpen non è più necessario per il menu a tendina mobile principale
+  const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false); // Stato per il menu a tre puntini desktop
+  const [isMobileDotsMenuOpen, setIsMobileDotsMenuOpen] = useState(false); // Stato per il menu a tre puntini mobile
 
-  const toggleMenu = () => {
-    setIsMenuOpen(!isMenuOpen);
-  };
-
+  // Non più necessario un toggleMenu generico, useremo toggleMobileDotsMenu
   const toggleDesktopMenu = () => {
     setIsDesktopMenuOpen(!isDesktopMenuOpen);
+  };
+
+  const toggleMobileDotsMenu = () => {
+    setIsMobileDotsMenuOpen(!isMobileDotsMenuOpen);
   };
 
   return (
@@ -42,7 +44,6 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificatio
         </div>
 
         {/* Sezione centrale: Logo dell'app e nome (Desktop e Mobile) */}
-        {/* Per mobile/tablet, il logo è centrato */}
         <div className="flex-grow flex justify-center items-center">
           <img src="/logo192.png" alt="Tagknot Logo" className="h-10 w-10 rounded-full md:h-12 md:w-12" />
           <span className="text-2xl font-bold text-gray-800 ml-2 md:text-3xl">Tagknot</span>
@@ -114,45 +115,53 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificatio
           </button>
 
           {/* Hamburger menu (tre puntini) per schermi piccoli */}
-          <button
-            onClick={toggleMenu}
-            className="text-gray-600 hover:text-gray-900 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-300"
-            aria-label="Apri menu"
-          >
-            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z"></path></svg>
-          </button>
+          <div className="relative">
+            <button
+              onClick={toggleMobileDotsMenu}
+              className="text-gray-600 hover:text-gray-900 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-300"
+              aria-label="Apri menu"
+            >
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z"></path></svg>
+            </button>
+            {isMobileDotsMenuOpen && (
+              <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg py-1 z-20">
+                <button
+                  onClick={() => { onNavigate('settings'); toggleMobileDotsMenu(); }}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Impostazioni
+                </button>
+                <button
+                  onClick={() => { onLogout(); toggleMobileDotsMenu(); }}
+                  className="block w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-100"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Menu a tendina per schermi piccoli (si apre sotto la navbar) */}
-      {isMenuOpen && (
-        <div className="md:hidden mt-2 space-y-2 pb-3 border-t border-gray-200 pt-3">
-          <button
-            onClick={() => { onNavigate('myProfile'); toggleMenu(); }}
-            className="block w-full text-left text-gray-600 hover:text-gray-900 px-4 py-2 rounded-md text-base font-medium transition-colors duration-200"
-          >
-            Mio Profilo
-          </button>
-          <button
-            onClick={() => { onNavigate('createEvent'); toggleMenu(); }}
-            className="block w-full text-left text-gray-600 hover:text-gray-900 px-4 py-2 rounded-md text-base font-medium transition-colors duration-200"
-          >
-            Crea Spot
-          </button>
-          <button
-            onClick={() => { onNavigate('settings'); toggleMenu(); }}
-            className="block w-full text-left text-gray-600 hover:text-gray-900 px-4 py-2 rounded-md text-base font-medium transition-colors duration-200"
-          >
-            Impostazioni
-          </button>
-          <button
-            onClick={() => { onLogout(); toggleMenu(); }}
-            className="block w-full text-left bg-gray-800 text-white px-4 py-2 rounded-md text-base font-medium hover:bg-gray-900 transition-colors duration-200"
-          >
-            Logout
-          </button>
-        </div>
-      )}
+      {/* Barra di navigazione inferiore per schermi piccoli (mobile/tablet) */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg md:hidden flex justify-around items-center h-16 border-t border-gray-200">
+        <button
+          onClick={() => onNavigate('myProfile')}
+          className="flex flex-col items-center text-gray-600 hover:text-gray-900 p-2 rounded-md transition-colors duration-200"
+          aria-label="Mio Profilo"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+          <span className="text-xs mt-1">Profilo</span>
+        </button>
+        <button
+          onClick={() => onNavigate('createEvent')}
+          className="flex flex-col items-center text-gray-600 hover:text-gray-900 p-2 rounded-md transition-colors duration-200"
+          aria-label="Crea Spot"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+          <span className="text-xs mt-1">Crea Spot</span>
+        </button>
+      </div>
     </nav>
   );
 };
