@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { addDoc, collection, doc, serverTimestamp, Timestamp, updateDoc, setDoc } from 'firebase/firestore'; // Aggiunto setDoc
+import { addDoc, collection, doc, serverTimestamp, Timestamp, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import AlertMessage from './AlertMessage';
 import LoadingSpinner from './LoadingSpinner';
-import { EventType, EventData } from '../interfaces';
+import { EventType, EventData } from '../interfaces'; // Corretto l'importazione
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
 // Nominatim (OpenStreetMap) non richiede una chiave API per un uso leggero.
@@ -179,7 +179,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !userId) {
+    if (!currentUser || !userId || !userProfile) { // Aggiunto userProfile per accedere a username e profileImage
       setMessage('Devi essere loggato per creare/modificare uno Spot.');
       setMessageType('error');
       return;
@@ -240,6 +240,8 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
         taggedUsers: taggedUsers.split(',').map(u => u.trim()).filter(u => u),
         isPublic,
         creatorId: userId,
+        creatorUsername: userProfile.username, // Salvato username del creatore
+        creatorProfileImage: userProfile.profileImage, // Salvata immagine profilo del creatore
         likes: eventToEdit ? eventToEdit.likes : [],
         commentCount: eventToEdit ? eventToEdit.commentCount : 0,
         createdAt: eventToEdit ? eventToEdit.createdAt : serverTimestamp() as Timestamp

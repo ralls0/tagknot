@@ -88,14 +88,15 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
 
       // Aggiorna il conteggio dei commenti nel documento pubblico
       batch.update(publicEventRef, {
-        commentCount: (currentEvent.commentCount || 0) + 1
+        commentCount: (currentEvent.commentCount || 0) + 1,
+        likes: currentEvent.likes || [] // Mantiene i like invariati
       });
 
-      // Aggiorna il conteggio dei commenti nel documento privato del creatore
-      // Solo se l'evento è stato creato dall'utente corrente (per garantire che il documento privato esista e sia rilevante)
+      // Se l'utente corrente è il creatore dell'evento, aggiorna anche il documento privato
       if (currentEvent.creatorId === userId) {
         batch.update(privateEventRef, {
-          commentCount: (currentEvent.commentCount || 0) + 1
+          commentCount: (currentEvent.commentCount || 0) + 1,
+          likes: currentEvent.likes || [] // Mantiene i like invariati
         });
       }
 

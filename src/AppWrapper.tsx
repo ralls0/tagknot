@@ -29,7 +29,6 @@ const appId = "tagknot-app";
 // Main App Component
 const App = () => {
   const { currentUser, loading, userId, userProfile } = useAuth();
-  // Modificato lo stato iniziale di currentPage da 'home' a 'myProfile'
   const [currentPage, setCurrentPage] = useState('myProfile');
   const [viewedUserId, setViewedUserId] = useState<string | null>(null);
   const [eventToEdit, setEventToEdit] = useState<EventType | null>(null);
@@ -89,7 +88,6 @@ const App = () => {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      // Dopo il logout, puoi reindirizzare alla pagina di login o a una home page pubblica
       handleNavigate('home');
     } catch (error) {
       console.error("Error during logout:", error);
@@ -97,7 +95,6 @@ const App = () => {
   };
 
   const handleLoginSuccess = () => {
-    // Dopo il login, reindirizza alla pagina del profilo
     handleNavigate('myProfile');
   };
 
@@ -180,48 +177,50 @@ const App = () => {
 
     try {
       const batch = writeBatch(db); // Usa un batch per aggiornamenti atomici
+      const eventDocSnap = await getDoc(publicEventRef); // Ottieni i dati più recenti per controllare il creatore
 
-      if (isLiked) {
-        batch.update(publicEventRef, {
-          likes: arrayRemove(userId)
-        });
-        // Aggiorna anche il documento privato se esiste e l'utente è il creatore
-        const eventDocSnap = await getDoc(publicEventRef);
-        if (eventDocSnap.exists() && eventDocSnap.data().creatorId === userId) {
-          batch.update(privateEventRef, {
-            likes: arrayRemove(userId)
-          });
-        }
-      } else {
-        batch.update(publicEventRef, {
-          likes: arrayUnion(userId)
-        });
-        // Aggiorna anche il documento privato se esiste e l'utente è il creatore
-        const eventDocSnap = await getDoc(publicEventRef); // Ottieni i dati più recenti
-        if (eventDocSnap.exists() && eventDocSnap.data().creatorId === userId) {
-          batch.update(privateEventRef, {
-            likes: arrayUnion(userId)
-          });
-        }
-
-        // Logica per la notifica solo se non è il proprio evento
-        if (eventDocSnap.exists() && eventDocSnap.data().creatorId !== userId) {
-          const eventCreatorId = eventDocSnap.data().creatorId;
-          const notificationData: NotificationData = {
-            type: 'like',
-            fromUserId: userId,
-            fromUsername: userProfile.username,
-            eventId: eventId,
-            eventTag: eventDocSnap.data().tag,
-            message: `${userProfile.username} ha messo "Mi piace" al tuo evento: ${eventDocSnap.data().tag}`,
-            createdAt: serverTimestamp() as Timestamp,
-            read: false,
-            imageUrl: eventDocSnap.data().coverImage || '',
-          };
-          await addDoc(collection(db, `artifacts/${appId}/users/${eventCreatorId}/notifications`), notificationData);
-        }
+      if (!eventDocSnap.exists()) {
+        console.warn("Event not found for like toggle.");
+        return;
       }
+
+      const currentLikes = eventDocSnap.data().likes || [];
+      const newLikes = isLiked ? arrayRemove(userId) : arrayUnion(userId);
+      const newLikeCount = isLiked ? currentLikes.length - 1 : currentLikes.length + 1;
+
+      // Aggiorna il documento pubblico
+      batch.update(publicEventRef, {
+        likes: newLikes,
+        // Assicurati che il conteggio sia aggiornato solo se il campo esiste, altrimenti inizializza
+        commentCount: eventDocSnap.data().commentCount || 0 // Mantiene il conteggio commenti invariato
+      });
+
+      // Se l'utente corrente è il creatore dell'evento, aggiorna anche il documento privato
+      if (eventDocSnap.data().creatorId === userId) {
+        batch.update(privateEventRef, {
+          likes: newLikes,
+          commentCount: eventDocSnap.data().commentCount || 0 // Mantiene il conteggio commenti invariato
+        });
+      }
+
       await batch.commit(); // Esegui tutte le operazioni del batch
+
+      // Logica per la notifica solo se non è il proprio evento
+      if (eventDocSnap.data().creatorId !== userId) {
+        const eventCreatorId = eventDocSnap.data().creatorId;
+        const notificationData: NotificationData = {
+          type: 'like',
+          fromUserId: userId,
+          fromUsername: userProfile.username,
+          eventId: eventId,
+          eventTag: eventDocSnap.data().tag,
+          message: `${userProfile.username} ha messo "Mi piace" al tuo evento: ${eventDocSnap.data().tag}`,
+          createdAt: serverTimestamp() as Timestamp,
+          read: false,
+          imageUrl: eventDocSnap.data().coverImage || '',
+        };
+        await addDoc(collection(db, `artifacts/${appId}/users/${eventCreatorId}/notifications`), notificationData);
+      }
     } catch (error) {
       console.error("Error toggling like:", error);
     }
