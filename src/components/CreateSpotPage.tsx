@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { addDoc, collection, doc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, Timestamp, updateDoc, setDoc } from 'firebase/firestore'; // Aggiunto setDoc
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import AlertMessage from './AlertMessage';
@@ -7,7 +7,8 @@ import LoadingSpinner from './LoadingSpinner';
 import { EventType, EventData } from '../interfaces';
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
-const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "YOUR_GOOGLE_MAPS_API_KEY"; // Placeholder
+// Nominatim (OpenStreetMap) non richiede una chiave API per un uso leggero.
+// Se necessario per usi intensivi, considera un servizio di geocodifica a pagamento basato su OSM o un'istanza self-hosted.
 
 // Funzione per ridimensionare e convertire un'immagine in Base64
 const resizeAndConvertToBase64 = (file: File, maxWidth: number, maxHeight: number): Promise<string> => {
@@ -38,7 +39,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth: number, maxHeight: numbe
 
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height); // Disegna l'immagine sul canvas
           resolve(canvas.toDataURL('image/jpeg', 0.8));
         } else {
           reject(new Error("Impossibile ottenere il contesto del canvas."));
@@ -71,7 +72,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [locationSuggestions, setLocationSuggestions] = useState<Array<{ description: string; place_id: string }>>([]);
+  const [locationSuggestions, setLocationSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]); // Modificato il tipo per Nominatim
   const [selectedLocationIndex, setSelectedLocationIndex] = useState(-1);
   const [loadingLocationSuggestions, setLoadingLocationSuggestions] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -84,6 +85,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
       setCoverImageLink(eventToEdit.coverImage || '');
       setDate(eventToEdit.date || '');
       setTime(eventToEdit.time || '');
+      setLocationSearch(eventToEdit.locationName || ''); // Pre-fill search field
       setLocationName(eventToEdit.locationName || '');
       setLocationCoords(eventToEdit.locationCoords || null);
       setTaggedUsers(eventToEdit.taggedUsers ? eventToEdit.taggedUsers.join(', ') : '');
@@ -99,6 +101,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
       setLocationSearch('');
       setLocationName('');
       setLocationCoords(null);
+      setTaggedUsers('');
       setIsPublic(true);
     }
   }, [eventToEdit]);
@@ -109,16 +112,18 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
       if (locationSearch.length > 2) {
         setLoadingLocationSuggestions(true);
         try {
-          const response = await fetch(`https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(locationSearch)}&key=${GOOGLE_MAPS_API_KEY}&components=country:it&region=it`);
+          // Utilizzo dell'API Nominatim di OpenStreetMap
+          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&addressdetails=1`);
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
           }
           const data = await response.json();
           if (isMounted) {
-            if (data.predictions) {
-              setLocationSuggestions(data.predictions.map((p: any) => ({
-                description: p.description,
-                place_id: p.place_id
+            if (data && data.length > 0) {
+              setLocationSuggestions(data.map((p: any) => ({
+                display_name: p.display_name,
+                lat: p.lat,
+                lon: p.lon
               })));
             } else {
               setLocationSuggestions([]);
@@ -126,8 +131,8 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
           }
         } catch (error) {
           if (isMounted) {
-            console.error("Error fetching place suggestions:", error);
-            setMessage('Errore nel recupero dei suggerimenti di posizione.');
+            console.error("Error fetching place suggestions from Nominatim:", error);
+            setMessage('Errore nel recupero dei suggerimenti di posizione. Riprova più tardi.');
             setMessageType('error');
             setLocationSuggestions([]);
           }
@@ -149,33 +154,14 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
     };
   }, [locationSearch]);
 
-  const handleSelectLocation = async (suggestion: { description: string; place_id: string }) => {
-    setLocationSearch(suggestion.description);
-    setLocationName(suggestion.description);
+  const handleSelectLocation = (suggestion: { display_name: string; lat: string; lon: string }) => { // Modificato il tipo per Nominatim
+    setLocationSearch(suggestion.display_name);
+    setLocationName(suggestion.display_name);
+    setLocationCoords({ lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) }); // Conversione a number
     setLocationSuggestions([]);
     setSelectedLocationIndex(-1);
     setMessage('');
     setMessageType('');
-
-    try {
-      const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?place_id=${suggestion.place_id}&key=${GOOGLE_MAPS_API_KEY}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      if (data.results && data.results.length > 0) {
-        setLocationCoords(data.results[0].geometry.location);
-      } else {
-        setMessage('Impossibile ottenere le coordinate per la posizione selezionata.');
-        setMessageType('error');
-        setLocationCoords(null);
-      }
-    } catch (error) {
-      console.error("Error fetching geocode for place_id:", error);
-      setMessage('Errore nel recupero delle coordinate di posizione.');
-      setMessageType('error');
-      setLocationCoords(null);
-    }
   };
 
   const handleKeyDownOnLocationSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -206,6 +192,11 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
     }
     if (!date || !time) {
       setMessage('Per favore, compila tutti i campi obbligatori (Data, Ora).');
+      setMessageType('error');
+      return;
+    }
+    if (!locationName || !locationCoords) {
+      setMessage('Per favore, seleziona una posizione valida dai suggerimenti.');
       setMessageType('error');
       return;
     }
@@ -263,10 +254,12 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
 
         setMessage('Spot modificato con successo!');
       } else {
+        // Aggiungi l'evento alla collezione privata dell'utente
+        const privateDocRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/events`), eventData);
+        // Se l'evento è pubblico, aggiungilo anche alla collezione pubblica con lo stesso ID
         if (isPublic) {
-          await addDoc(collection(db, `artifacts/${appId}/public/data/events`), eventData);
+          await setDoc(doc(db, `artifacts/${appId}/public/data/events`, privateDocRef.id), eventData);
         }
-        await addDoc(collection(db, `artifacts/${appId}/users/${userId}/events`), eventData);
         setMessage('Spot creato con successo!');
       }
       setMessageType('success');
@@ -371,7 +364,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="locationSearch"> Ricerca Posizione (Opzionale) </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="locationSearch"> Ricerca Posizione <span className="text-red-500">* </span></label>
           <div className="flex space-x-2">
             <input
               type="text"
@@ -380,7 +373,8 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
               onChange={(e) => { setLocationSearch(e.target.value); setSelectedLocationIndex(-1); }}
               onKeyDown={handleKeyDownOnLocationSearch}
               className="flex-grow px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
-              placeholder="Cerca su Google Maps..."
+              placeholder="Cerca città, indirizzo..."
+              required // Reso obbligatorio
             />
           </div>
           {
@@ -397,11 +391,11 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
                 {
                   locationSuggestions.map((suggestion, index) => (
                     <li
-                      key={suggestion.place_id}
+                      key={`${suggestion.lat}-${suggestion.lon}-${index}`} // Chiave unica per Nominatim
                       className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${index === selectedLocationIndex ? 'bg-gray-100' : ''}`}
                       onClick={() => handleSelectLocation(suggestion)}
                     >
-                      {suggestion.description}
+                      {suggestion.display_name}
                     </li>
                   ))}
               </ul>

@@ -217,7 +217,7 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
                     onDelete={onDeleteEvent}
                     isProfileView={true}
                     onLikeToggle={onLikeToggle}
-                    onShowEventDetail={onShowEventDetail}
+                    onShowEventDetail={(clickedEvent) => onShowEventDetail(clickedEvent, myEvents, 'myEvents')} // Passa myEvents
                     onRemoveTag={async () => { }}
                   />
                 </div>

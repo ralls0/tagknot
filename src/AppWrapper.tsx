@@ -175,17 +175,36 @@ const App = () => {
   const handleLikeToggle = async (eventId: string, isLiked: boolean) => {
     if (!currentUser || !userId || !userProfile) return;
 
-    const eventRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
+    const publicEventRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
+    const privateEventRef = doc(db, `artifacts/${appId}/users/${userId}/events`, eventId); // Riferimento al documento privato
+
     try {
+      const batch = writeBatch(db); // Usa un batch per aggiornamenti atomici
+
       if (isLiked) {
-        await updateDoc(eventRef, {
+        batch.update(publicEventRef, {
           likes: arrayRemove(userId)
         });
+        // Aggiorna anche il documento privato se esiste e l'utente è il creatore
+        const eventDocSnap = await getDoc(publicEventRef);
+        if (eventDocSnap.exists() && eventDocSnap.data().creatorId === userId) {
+          batch.update(privateEventRef, {
+            likes: arrayRemove(userId)
+          });
+        }
       } else {
-        await updateDoc(eventRef, {
+        batch.update(publicEventRef, {
           likes: arrayUnion(userId)
         });
-        const eventDocSnap = await getDoc(eventRef);
+        // Aggiorna anche il documento privato se esiste e l'utente è il creatore
+        const eventDocSnap = await getDoc(publicEventRef); // Ottieni i dati più recenti
+        if (eventDocSnap.exists() && eventDocSnap.data().creatorId === userId) {
+          batch.update(privateEventRef, {
+            likes: arrayUnion(userId)
+          });
+        }
+
+        // Logica per la notifica solo se non è il proprio evento
         if (eventDocSnap.exists() && eventDocSnap.data().creatorId !== userId) {
           const eventCreatorId = eventDocSnap.data().creatorId;
           const notificationData: NotificationData = {
@@ -202,6 +221,7 @@ const App = () => {
           await addDoc(collection(db, `artifacts/${appId}/users/${eventCreatorId}/notifications`), notificationData);
         }
       }
+      await batch.commit(); // Esegui tutte le operazioni del batch
     } catch (error) {
       console.error("Error toggling like:", error);
     }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore'; // Importato writeBatch
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
@@ -18,10 +18,13 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
   const userProfile = authContext?.userProfile;
   const [showAllComments, setShowAllComments] = useState(false);
 
-  const currentEvent = relatedEvents[currentIndex];
+  // Assicurati che currentEvent sia sempre definito
+  const currentEvent = relatedEvents[currentIndex] || event;
+
+  // Controlli di sicurezza per evitare errori se currentEvent è undefined
   const currentUserProfileTag = userProfile?.profileTag || (currentUser?.email ? currentUser.email.split('@')[0] : '');
-  const isTaggedEvent = currentUser && (currentEvent.taggedUsers || []).includes(currentUserProfileTag);
-  const isLiked = !!(currentUser && currentEvent.likes && currentEvent.likes.includes(currentUser.uid));
+  const isTaggedEvent = currentUser && (currentEvent?.taggedUsers || []).includes(currentUserProfileTag); // Aggiunto optional chaining e fallback
+  const isLiked = !!(currentUser && currentEvent?.likes && currentEvent.likes.includes(currentUser.uid)); // Aggiunto optional chaining
 
   useEffect(() => {
     let isMounted = true;
@@ -52,7 +55,7 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
       isMounted = false;
       unsubscribeComments();
     };
-  }, [currentEvent, currentEvent.id]);
+  }, [currentEvent, currentEvent?.id]); // Aggiunto optional chaining per currentEvent.id
 
   const goToNext = () => {
     setCurrentIndex((prevIndex: number) => (prevIndex + 1) % relatedEvents.length);
@@ -68,46 +71,63 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
       return;
     }
 
-    const commentsCollectionRef = collection(db, `artifacts/${appId}/public/data/events/${currentEvent.id}/comments`);
+    const publicCommentsCollectionRef = collection(db, `artifacts/${appId}/public/data/events/${currentEvent.id}/comments`);
+    const publicEventRef = doc(db, `artifacts/${appId}/public/data/events`, currentEvent.id);
+    const privateEventRef = doc(db, `artifacts/${appId}/users/${currentEvent.creatorId}/events`, currentEvent.id); // Riferimento al documento privato
+
     try {
-      await addDoc(commentsCollectionRef, {
+      const batch = writeBatch(db); // Usa un batch per aggiornamenti atomici
+
+      // Aggiungi il commento alla sottocollezione pubblica
+      await addDoc(publicCommentsCollectionRef, {
         userId: userId,
         username: userProfile.username,
         text: commentText,
         createdAt: serverTimestamp(),
       } as CommentData);
 
-      const eventRef = doc(db, `artifacts/${appId}/public/data/events`, currentEvent.id);
-      await updateDoc(eventRef, {
+      // Aggiorna il conteggio dei commenti nel documento pubblico
+      batch.update(publicEventRef, {
         commentCount: (currentEvent.commentCount || 0) + 1
       });
 
-      // Add notification for the event creator if not self-commenting
-      // Removed direct getDoc and added a simple notification
-      const notificationData: NotificationData = {
-        type: 'comment',
-        fromUserId: userId,
-        fromUsername: userProfile.username,
-        eventId: currentEvent.id,
-        eventTag: currentEvent.tag,
-        message: `${userProfile.username} ha commentato il tuo evento: ${currentEvent.tag}`,
-        createdAt: serverTimestamp() as any, // Firebase Timestamp type
-        read: false,
-        imageUrl: currentEvent.coverImage || '',
-      };
-      await addDoc(collection(db, `artifacts/${appId}/users/${currentEvent.creatorId}/notifications`), notificationData);
+      // Aggiorna il conteggio dei commenti nel documento privato del creatore
+      // Solo se l'evento è stato creato dall'utente corrente (per garantire che il documento privato esista e sia rilevante)
+      if (currentEvent.creatorId === userId) {
+        batch.update(privateEventRef, {
+          commentCount: (currentEvent.commentCount || 0) + 1
+        });
+      }
 
+      // Esegui tutte le operazioni del batch
+      await batch.commit();
+
+      // Add notification for the event creator if not self-commenting
+      if (currentEvent.creatorId !== userId) { // Aggiunto controllo per evitare notifica a se stessi
+        const notificationData: NotificationData = {
+          type: 'comment',
+          fromUserId: userId,
+          fromUsername: userProfile.username,
+          eventId: currentEvent.id,
+          eventTag: currentEvent.tag,
+          message: `${userProfile.username} ha commentato il tuo evento: ${currentEvent.tag}`,
+          createdAt: serverTimestamp() as any, // Firebase Timestamp type
+          read: false,
+          imageUrl: currentEvent.coverImage || '',
+        };
+        await addDoc(collection(db, `artifacts/${appId}/users/${currentEvent.creatorId}/notifications`), notificationData);
+      }
       setCommentText('');
     } catch (error) {
       console.error("Error adding comment:", error);
     }
   };
 
-  const defaultCoverImage = currentEvent.locationName ?
+  const defaultCoverImage = currentEvent?.locationName ? // Aggiunto optional chaining
     `https://placehold.co/600x400/E0E0E0/888?text=${encodeURIComponent(currentEvent.locationName.split(',')[0])}` :
     'https://placehold.co/600x400/E0E0E0/888?text=Nessuna+Immagine';
 
-  if (!currentEvent) return null;
+  if (!currentEvent) return null; // Assicurati che currentEvent esista prima di renderizzare
 
   const displayedComments = showAllComments ? comments : comments.slice(0, 3);
 
@@ -122,10 +142,10 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
           relatedEvents.length > 1 && (
             <>
               <button onClick={goToPrev} className="absolute left-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-75 rounded-full p-2 shadow-md hover:bg-opacity-100 transition-colors">
-                <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"> </path></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"> </path></svg>
               </button>
               <button onClick={goToNext} className="absolute right-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-75 rounded-full p-2 shadow-md hover:bg-opacity-100 transition-colors">
-                <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"> </path></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"> </path></svg>
               </button>
             </>
           )}
