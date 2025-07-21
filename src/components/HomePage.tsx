@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext';
 import EventCard from './EventCard';
 import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
-import { EventType, UserProfileData } from '../interfaces';
+import { EventType, UserProfileData, EventData } from '../interfaces';
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { FollowButtonProps } from '../interfaces';
 
 const FollowButton = ({ isFollowing, onToggle, disabled = false }: FollowButtonProps) => (
   <button

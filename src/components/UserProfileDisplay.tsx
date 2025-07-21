@@ -7,7 +7,7 @@ import FollowButton from './FollowButton';
 import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
 import EventCard from './EventCard';
-import { EventType, UserProfileData } from '../interfaces';
+import { EventType, UserProfileData, EventData, UserProfile } from '../interfaces';
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
 

@@ -1,4 +1,5 @@
 import React from 'react';
+import { UserAvatarProps } from '../interfaces';
 
 const UserAvatar = ({ imageUrl, username, size = 'md', className = '' }: UserAvatarProps) => {
   const sizeClasses = {
