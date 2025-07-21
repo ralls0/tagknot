@@ -38,6 +38,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth: number, maxHeight: numbe
 
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height); // Draw image to canvas
           resolve(canvas.toDataURL('image/jpeg', 0.8));
         } else {
           reject(new Error("Impossibile ottenere il contesto del canvas."));
@@ -281,9 +282,9 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
   };
 
   return (
-    <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4">
-      <h1 className="text-4xl font-extrabold text-center mb-8 text-gray-800"> {eventToEdit ? 'Modifica Spot' : 'Crea Nuovo Spot'} </h1>
-      <form onSubmit={handleSubmit} className="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-xl border border-gray-200 space-y-6">
+    <div className="pt-8 pb-8 sm:pt-12 sm:pb-12 bg-gray-100 min-h-screen text-gray-800 p-4 font-inter">
+      <h1 className="text-3xl sm:text-4xl font-extrabold text-center mb-6 sm:mb-8 text-gray-900"> {eventToEdit ? 'Modifica Spot' : 'Crea Nuovo Spot'} </h1>
+      <form onSubmit={handleSubmit} className="max-w-xl mx-auto bg-white p-6 sm:p-8 rounded-xl shadow-lg border border-gray-100 space-y-5 sm:space-y-6">
         <AlertMessage message={message} type={messageType} />
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="tag"> Tag (Titolo Spot) <span className="text-red-500">* </span></label>
@@ -292,7 +293,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
             id="tag"
             value={tag}
             onChange={(e) => setTag(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
+            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-800 placeholder-gray-400"
             placeholder="Es. Concerto Rock, Cena tra amici"
             required
           />
@@ -304,47 +305,48 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
+            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-800 placeholder-gray-400"
             placeholder="Dettagli aggiuntivi sullo Spot..."
           > </textarea>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="coverImageLink"> URL Immagine di Copertina (Opzionale) </label>
+        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+          <label className="block text-sm font-medium text-gray-700 mb-2"> Immagine di Copertina (Opzionale) </label>
+          <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-4">
+            {(coverImageUrl || coverImageLink) && !coverImageFile && (
+              <div className="flex flex-col items-center">
+                <p className="text-sm text-gray-600 mb-2"> Attuale: </p>
+                <img src={coverImageLink || coverImageUrl} alt="Anteprima copertina" className="w-24 h-24 object-cover rounded-lg shadow-sm border border-gray-300" />
+              </div>
+            )}
+            {coverImageFile && (
+              <div className="flex flex-col items-center">
+                <p className="text-sm text-gray-600 mb-2"> Selezionata: </p>
+                <img src={URL.createObjectURL(coverImageFile)} alt="Anteprima file" className="w-24 h-24 object-cover rounded-lg shadow-sm border border-gray-300" />
+              </div>
+            )}
+          </div>
           <input
             type="text"
             id="coverImageLink"
             value={coverImageLink}
             onChange={(e) => { setCoverImageLink(e.target.value); setCoverImageFile(null); }}
-            className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
+            className="w-full px-4 py-2 bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-800 placeholder-gray-400 mb-2"
             placeholder="Incolla l'URL di un'immagine"
           />
-          <p className="text-center text-gray-500 my-2"> --OPPURE --</p>
-          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="coverImageFile"> Carica Immagine di Copertina (Opzionale) </label>
+          <p className="text-center text-gray-500 my-2 text-sm"> -- oppure -- </p>
           <input
             type="file"
             id="coverImageFile"
             accept="image/*"
             onChange={(e) => { setCoverImageFile(e.target.files ? e.target.files[0] : null); setCoverImageLink(''); }}
-            className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+            className="w-full px-4 py-2 bg-white border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-800 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
           />
           {isUploadingImage && (
             <div className="flex items-center justify-center mt-4 text-gray-600">
-              <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-500 mr-3"> </div>
+              <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-indigo-500 mr-3"> </div>
               Caricamento immagine...
             </div>
           )}
-          {
-            (coverImageUrl && !coverImageFile && !coverImageLink) || (coverImageLink && !coverImageFile) ? (
-              <div className="mt-4">
-                <p className="text-sm text-gray-600 mb-2"> Immagine attuale: </p>
-                <img src={coverImageLink || coverImageUrl} alt="Anteprima copertina" className="w-32 h-32 object-cover rounded-lg border border-gray-300" />
-              </div>
-            ) : coverImageFile && (
-              <div className="mt-4">
-                <p className="text-sm text-gray-600 mb-2"> Anteprima file selezionato: </p>
-                <img src={URL.createObjectURL(coverImageFile)} alt="Anteprima copertina" className="w-32 h-32 object-cover rounded-lg border border-gray-300" />
-              </div>
-            )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -354,7 +356,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
               id="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-800"
               required
             />
           </div>
@@ -365,51 +367,51 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
               id="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-800"
               required
             />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="locationSearch"> Ricerca Posizione (Opzionale) </label>
-          <div className="flex space-x-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="locationSearch"> Posizione (Opzionale) </label>
+          {/* Added relative positioning to this div to contain absolute positioned suggestions */}
+          <div className="relative">
             <input
               type="text"
               id="locationSearch"
               value={locationSearch}
               onChange={(e) => { setLocationSearch(e.target.value); setSelectedLocationIndex(-1); }}
               onKeyDown={handleKeyDownOnLocationSearch}
-              className="flex-grow px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
-              placeholder="Cerca su Google Maps..."
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-800 placeholder-gray-400"
+              placeholder="Cerca un luogo o inseriscilo manualmente"
             />
+            {
+              loadingLocationSuggestions && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-indigo-500"> </div>
+                </div>
+              )
+            }
+            {
+              locationSuggestions.length > 0 && (
+                <ul className="bg-white border border-gray-200 rounded-md mt-1 max-h-48 overflow-y-auto shadow-md absolute z-10 w-full">
+                  {
+                    locationSuggestions.map((suggestion, index) => (
+                      <li
+                        key={suggestion.place_id}
+                        className={`px-4 py-2 cursor-pointer text-gray-800 hover:bg-gray-100 ${index === selectedLocationIndex ? 'bg-gray-100 font-semibold' : ''}`}
+                        onClick={() => handleSelectLocation(suggestion)}
+                      >
+                        {suggestion.description}
+                      </li>
+                    ))}
+                </ul>
+              )
+            }
           </div>
           {
-            loadingLocationSuggestions && (
-              <div className="flex items-center justify-center mt-2 text-gray-600">
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-500 mr-2"> </div>
-                Caricamento suggerimenti...
-              </div>
-            )
-          }
-          {
-            locationSuggestions.length > 0 && (
-              <ul className="bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                {
-                  locationSuggestions.map((suggestion, index) => (
-                    <li
-                      key={suggestion.place_id}
-                      className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${index === selectedLocationIndex ? 'bg-gray-100' : ''}`}
-                      onClick={() => handleSelectLocation(suggestion)}
-                    >
-                      {suggestion.description}
-                    </li>
-                  ))}
-              </ul>
-            )
-          }
-          {
             locationName && (
-              <p className="text-sm text-gray-600 mt-2"> Posizione selezionata: <span className="font-semibold"> {locationName} </span></p>
+              <p className="text-sm text-gray-600 mt-2"> Posizione selezionata: <span className="font-semibold text-indigo-700"> {locationName} </span></p>
             )
           }
         </div>
@@ -420,7 +422,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
             id="taggedUsers"
             value={taggedUsers}
             onChange={(e) => setTaggedUsers(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
+            className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-800 placeholder-gray-400"
             placeholder="username1, username2 (usa il tag profilo)"
           />
         </div>
@@ -430,7 +432,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
             id="isPublic"
             checked={isPublic}
             onChange={(e) => setIsPublic(e.target.checked)}
-            className="h-5 w-5 text-gray-700 rounded border-gray-300 focus:ring-gray-500 bg-gray-50"
+            className="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 bg-gray-50"
           />
           <label htmlFor="isPublic" className="ml-2 block text-sm text-gray-700">
             Rendi lo Spot pubblico (visibile nel feed degli utenti che ti seguono)
@@ -438,7 +440,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
         </div>
         <button
           type="submit"
-          className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg"
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-md"
           disabled={isSubmitting || isUploadingImage}
         >
           {isSubmitting || isUploadingImage ? (eventToEdit ? 'Salvataggio...' : 'Creazione in corso...') : (eventToEdit ? 'Salva Modifiche' : 'Crea Spot')}
@@ -448,7 +450,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
             <button
               type="button"
               onClick={onCancelEdit}
-              className="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg mt-4"
+              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-md mt-4"
             >
               Annulla
             </button>
