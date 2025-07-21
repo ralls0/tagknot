@@ -11,63 +11,21 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificationsCount }) => {
   const { userProfile } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false); // Nuovo stato per il menu desktop
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
   };
 
+  const toggleDesktopMenu = () => {
+    setIsDesktopMenuOpen(!isDesktopMenuOpen);
+  };
+
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white shadow-md z-40 p-4">
       <div className="max-w-7xl mx-auto flex items-center justify-between h-14">
-        {/* Logo per schermi grandi */}
-        <div className="hidden md:flex items-center space-x-3">
-          <img src="/logo192.png" alt="Tagknot Logo" className="h-10 w-10 rounded-full" />
-          <span className="text-2xl font-bold text-gray-800">Tagknot</span>
-        </div>
-
-        {/* Logo per schermi piccoli (centrato) */}
-        <div className="flex-grow flex justify-center md:hidden">
-          <img src="/logo192.png" alt="Tagknot Logo" className="h-10 w-10 rounded-full" />
-          <span className="text-2xl font-bold text-gray-800 ml-2">Tagknot</span>
-        </div>
-
-        {/* Menu di navigazione principale (visibile su schermi grandi) */}
-        <div className="hidden md:flex items-center space-x-6">
-          <button
-            onClick={() => onNavigate('myProfile')}
-            className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-base font-medium transition-colors duration-200"
-          >
-            Mio Profilo
-          </button>
-          <button
-            onClick={() => onNavigate('createEvent')}
-            className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-base font-medium transition-colors duration-200"
-          >
-            Crea Spot
-          </button>
-          <button
-            onClick={() => onNavigate('notifications')}
-            className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-base font-medium transition-colors duration-200 relative"
-          >
-            Notifiche
-            {unreadNotificationsCount > 0 && (
-              <span className="absolute top-1 right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                {unreadNotificationsCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => onNavigate('settings')}
-            className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-base font-medium transition-colors duration-200"
-          >
-            Impostazioni
-          </button>
-          <button
-            onClick={onLogout}
-            className="bg-gray-800 text-white px-4 py-2 rounded-md text-base font-medium hover:bg-gray-900 transition-colors duration-200"
-          >
-            Logout
-          </button>
+        {/* Sezione sinistra: Miniatura profilo utente e nome (Desktop e Mobile) */}
+        <div className="flex items-center space-x-3">
           {userProfile && (
             <UserAvatar
               imageUrl={userProfile.profileImage}
@@ -77,11 +35,71 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificatio
               className="cursor-pointer"
             />
           )}
+          {/* Mostra il nome utente solo su desktop */}
+          <span className="hidden md:block text-lg font-semibold text-gray-800">
+            {userProfile?.username || 'Guest'}
+          </span>
         </div>
 
-        {/* Hamburger menu per schermi piccoli */}
+        {/* Sezione centrale: Logo dell'app e nome (Desktop e Mobile) */}
+        {/* Per mobile/tablet, il logo è centrato */}
+        <div className="flex-grow flex justify-center items-center">
+          <img src="/logo192.png" alt="Tagknot Logo" className="h-10 w-10 rounded-full md:h-12 md:w-12" />
+          <span className="text-2xl font-bold text-gray-800 ml-2 md:text-3xl">Tagknot</span>
+        </div>
+
+        {/* Sezione destra: Menu di navigazione principale (visibile su schermi grandi) */}
+        <div className="hidden md:flex items-center space-x-6">
+          <button
+            onClick={() => onNavigate('createEvent')}
+            className="text-gray-600 hover:text-gray-900 p-2 rounded-md transition-colors duration-200"
+            aria-label="Crea Spot"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+          </button>
+          <button
+            onClick={() => onNavigate('notifications')}
+            className="text-gray-600 hover:text-gray-900 p-2 rounded-md relative transition-colors duration-200"
+            aria-label="Notifiche"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center">
+                {unreadNotificationsCount}
+              </span>
+            )}
+          </button>
+          {/* Menu a tre puntini per Desktop */}
+          <div className="relative">
+            <button
+              onClick={toggleDesktopMenu}
+              className="text-gray-600 hover:text-gray-900 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-300"
+              aria-label="Opzioni menu"
+            >
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z"></path></svg>
+            </button>
+            {isDesktopMenuOpen && (
+              <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg py-1 z-20">
+                <button
+                  onClick={() => { onNavigate('settings'); toggleDesktopMenu(); }}
+                  className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Impostazioni
+                </button>
+                <button
+                  onClick={() => { onLogout(); toggleDesktopMenu(); }}
+                  className="block w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-100"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sezione destra: Notifiche e Hamburger menu (visibile su schermi piccoli) */}
         <div className="flex items-center md:hidden">
-          {/* Notifiche su schermi piccoli (prima dei tre puntini) */}
+          {/* Notifiche su schermi piccoli */}
           <button
             onClick={() => onNavigate('notifications')}
             className="text-gray-600 hover:text-gray-900 p-2 rounded-md relative mr-2"
@@ -95,23 +113,18 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificatio
             )}
           </button>
 
+          {/* Hamburger menu (tre puntini) per schermi piccoli */}
           <button
             onClick={toggleMenu}
             className="text-gray-600 hover:text-gray-900 p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-300"
             aria-label="Apri menu"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              {isMenuOpen ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
-              )}
-            </svg>
+            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z"></path></svg>
           </button>
         </div>
       </div>
 
-      {/* Menu a tendina per schermi piccoli */}
+      {/* Menu a tendina per schermi piccoli (si apre sotto la navbar) */}
       {isMenuOpen && (
         <div className="md:hidden mt-2 space-y-2 pb-3 border-t border-gray-200 pt-3">
           <button
@@ -126,7 +139,6 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificatio
           >
             Crea Spot
           </button>
-          {/* Le notifiche sono già sopra, non ripeterle qui */}
           <button
             onClick={() => { onNavigate('settings'); toggleMenu(); }}
             className="block w-full text-left text-gray-600 hover:text-gray-900 px-4 py-2 rounded-md text-base font-medium transition-colors duration-200"

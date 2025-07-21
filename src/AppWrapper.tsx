@@ -192,6 +192,7 @@ const App = () => {
     try {
       const batch = writeBatch(db);
 
+      // Determina l'operazione in base allo stato attuale del "mi piace"
       const likeUpdate = isLiked ? arrayRemove(userId) : arrayUnion(userId);
 
       // Aggiorna il documento pubblico
@@ -200,6 +201,7 @@ const App = () => {
       });
 
       // Se l'utente corrente è il creatore dell'evento, aggiorna anche il documento privato
+      // Questo è importante per la coerenza della visualizzazione nel profilo del creatore
       if (eventCreatorId === userId) {
         batch.update(privateEventRef, {
           likes: likeUpdate
@@ -208,8 +210,14 @@ const App = () => {
 
       await batch.commit();
 
-      // Logica per la notifica solo se non è il proprio evento
-      if (eventCreatorId !== userId) {
+      // Dopo l'aggiornamento di Firestore, recupera l'evento aggiornato e aggiorna lo stato del modale
+      const updatedEventSnap = await getDoc(publicEventRef);
+      if (updatedEventSnap.exists()) {
+        setSelectedEventForModal({ id: updatedEventSnap.id, ...(updatedEventSnap.data() as EventData) });
+      }
+
+      // Logica per la notifica solo se non è il proprio evento e se è stato aggiunto un like (non rimosso)
+      if (eventCreatorId !== userId && !isLiked) { // Notifica solo se il like è stato aggiunto
         const notificationData: NotificationData = {
           type: 'like',
           fromUserId: userId,
