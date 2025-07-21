@@ -1,13 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch, increment } from 'firebase/firestore'; // Importato increment
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch, increment } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 import { EventType, CommentType, CommentData, NotificationData } from '../interfaces';
 
-const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
+const appId = "tagknot-app";
 
-const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeTab, onRemoveTagFromEvent, onLikeToggle, onAddComment, onShareEvent }: { event: EventType; onClose: () => void; relatedEvents: EventType[]; initialIndex: number; activeTab: string; onRemoveTagFromEvent: (eventId: string) => Promise<void>; onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>; onAddComment: (eventId: string, commentText: string) => Promise<void>; onShareEvent: (event: EventType) => void; }) => {
+interface EventDetailModalProps {
+  event: EventType;
+  onClose: () => void;
+  relatedEvents: EventType[];
+  initialIndex: number;
+  activeTab: string;
+  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
+  onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>;
+  onShareEvent: (event: EventType) => void;
+}
+
+const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, relatedEvents, initialIndex, activeTab, onRemoveTagFromEvent, onLikeToggle, onShareEvent }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState<CommentType[]>([]);
@@ -21,10 +32,10 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
   // Assicurati che currentEvent sia sempre definito
   const currentEvent = relatedEvents[currentIndex] || event;
 
-  // Controlli di sicurezza per evitare errori se currentEvent è undefined
   const currentUserProfileTag = userProfile?.profileTag || (currentUser?.email ? currentUser.email.split('@')[0] : '');
-  const isTaggedEvent = currentUser && (currentEvent?.taggedUsers || []).includes(currentUserProfileTag); // Aggiunto optional chaining e fallback
-  const isLiked = !!(currentUser && currentEvent?.likes && currentEvent.likes.includes(currentUser.uid)); // Aggiunto optional chaining
+  const isTaggedEvent = currentUser && (currentEvent?.taggedUsers || []).includes(currentUserProfileTag);
+  const isLiked = !!(currentUser && currentEvent?.likes && currentEvent.likes.includes(currentUser.uid));
+  const isOwnEvent = currentUser && currentEvent.creatorId === currentUser.uid;
 
   useEffect(() => {
     let isMounted = true;
@@ -55,7 +66,7 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
       isMounted = false;
       unsubscribeComments();
     };
-  }, [currentEvent, currentEvent?.id]); // Aggiunto optional chaining per currentEvent.id
+  }, [currentEvent, currentEvent?.id]);
 
   const goToNext = () => {
     setCurrentIndex((prevIndex: number) => (prevIndex + 1) % relatedEvents.length);
@@ -73,12 +84,11 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
 
     const publicCommentsCollectionRef = collection(db, `artifacts/${appId}/public/data/events/${currentEvent.id}/comments`);
     const publicEventRef = doc(db, `artifacts/${appId}/public/data/events`, currentEvent.id);
-    const privateEventRef = doc(db, `artifacts/${appId}/users/${currentEvent.creatorId}/events`, currentEvent.id); // Riferimento al documento privato
+    const privateEventRef = doc(db, `artifacts/${appId}/users/${currentEvent.creatorId}/events`, currentEvent.id);
 
     try {
-      const batch = writeBatch(db); // Usa un batch per aggiornamenti atomici
+      const batch = writeBatch(db);
 
-      // Aggiungi il commento alla sottocollezione pubblica
       await addDoc(publicCommentsCollectionRef, {
         userId: userId,
         username: userProfile.username,
@@ -86,25 +96,20 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
         createdAt: serverTimestamp(),
       } as CommentData);
 
-      // Aggiorna il conteggio dei commenti nel documento pubblico
       batch.update(publicEventRef, {
-        commentCount: increment(1) // Usa FieldValue.increment per il contatore
+        commentCount: increment(1)
       });
 
-      // Se l'utente corrente è il creatore dell'evento, aggiorna anche il documento privato
-      // Assicurati che l'evento esista nella collezione privata prima di tentare l'aggiornamento
       const privateEventDocSnap = await getDoc(privateEventRef);
       if (privateEventDocSnap.exists()) {
         batch.update(privateEventRef, {
-          commentCount: increment(1) // Usa FieldValue.increment per il contatore
+          commentCount: increment(1)
         });
       }
       
-      // Esegui tutte le operazioni del batch
       await batch.commit();
 
-      // Add notification for the event creator if not self-commenting
-      if (currentEvent.creatorId !== userId) { // Aggiunto controllo per evitare notifica a se stessi
+      if (currentEvent.creatorId !== userId) {
         const notificationData: NotificationData = {
           type: 'comment',
           fromUserId: userId,
@@ -112,7 +117,7 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
           eventId: currentEvent.id,
           eventTag: currentEvent.tag,
           message: `${userProfile.username} ha commentato il tuo evento: ${currentEvent.tag}`,
-          createdAt: serverTimestamp() as any, // Firebase Timestamp type
+          createdAt: serverTimestamp() as any,
           read: false,
           imageUrl: currentEvent.coverImage || '',
         };
@@ -124,11 +129,11 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
     }
   };
 
-  const defaultCoverImage = currentEvent?.locationName ? // Aggiunto optional chaining
+  const defaultCoverImage = currentEvent?.locationName ?
     `https://placehold.co/600x400/E0E0E0/888?text=${encodeURIComponent(currentEvent.locationName.split(',')[0])}` :
     'https://placehold.co/600x400/E0E0E0/888?text=Nessuna+Immagine';
 
-  if (!currentEvent) return null; // Assicurati che currentEvent esista prima di renderizzare
+  if (!currentEvent) return null;
 
   const displayedComments = showAllComments ? comments : comments.slice(0, 3);
 
@@ -168,7 +173,7 @@ const EventDetailModal = ({ event, onClose, relatedEvents, initialIndex, activeT
           )}
 
         <div className="p-6 flex-grow overflow-y-auto">
-          <h3 className="text-3xl font-bold text-gray-800 mb-3">#{currentEvent.tag} </h3>
+          <h3 className="text-3xl font-bold text-gray-800 mb-3">{currentEvent.tag} </h3>
           {currentEvent.description && <p className="text-gray-700 text-base mb-4"> {currentEvent.description} </p>}
           <div className="text-gray-600 text-sm space-y-2 mb-4">
             <p className="flex items-center">

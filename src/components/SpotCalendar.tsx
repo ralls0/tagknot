@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { EventType, SpotCalendarProps } from '../interfaces';
+import { EventType } from '../interfaces';
 
-// The SpotCalendar component, enhanced for full responsiveness and Instagram-like style
+interface SpotCalendarProps {
+  spots: EventType[];
+  onShowSpotDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+}
+
 const SpotCalendar: React.FC<SpotCalendarProps> = ({ spots, onShowSpotDetail }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [upcomingSpots, setUpcomingSpots] = useState<EventType[]>([]);
@@ -150,8 +154,8 @@ const SpotCalendar: React.FC<SpotCalendarProps> = ({ spots, onShowSpotDetail }) 
                 ) : (
                   <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs sm:text-sm font-semibold flex-shrink-0">No Img</div>
                 )}
-                <div className="flex-grow">
-                  <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-0.5 sm:mb-1">#{spot.tag}</h4>
+                <div className="flex-grow min-w-0"> {/* Aggiunto min-w-0 qui */}
+                  <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-0.5 sm:mb-1">{spot.tag}</h4>
                   <p className="text-xs sm:text-sm text-gray-700 mb-0.5 sm:mb-1">{new Date(`${spot.date}T${spot.time}`).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
                   <p className="text-xs text-gray-500 truncate">{spot.locationName}</p>
                 </div>

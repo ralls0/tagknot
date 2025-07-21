@@ -1,31 +1,59 @@
 import React from 'react';
-import { UserAvatarProps } from '../interfaces';
 
-const UserAvatar = ({ imageUrl, username, size = 'md', className = '' }: UserAvatarProps) => {
-  const sizeClasses = {
-    sm: 'w-8 h-8 text-sm',
-    md: 'w-10 h-10 text-lg',
-    lg: 'w-12 h-12 text-xl',
-    xl: 'w-32 h-32 text-6xl',
+interface UserAvatarProps {
+  imageUrl: string | undefined | null;
+  username: string | undefined | null;
+  size?: 'sm' | 'md' | 'lg' | 'xl'; // Define sizes for flexibility
+  className?: string;
+  onClick?: () => void; // Aggiunto onClick come prop opzionale
+}
+
+const UserAvatar: React.FC<UserAvatarProps> = ({ imageUrl, username, size = 'md', className, onClick }) => {
+  const getInitials = (name: string | undefined | null) => {
+    if (!name) return '';
+    const parts = name.split(' ');
+    if (parts.length === 1) {
+      return parts[0].substring(0, 2).toUpperCase();
+    }
+    return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
   };
+
+  const sizeClasses = {
+    sm: 'h-8 w-8 text-xs',
+    md: 'h-10 w-10 text-sm',
+    lg: 'h-12 w-12 text-base',
+    xl: 'h-20 w-20 text-xl',
+  };
+
   const currentSizeClass = sizeClasses[size];
 
   return (
-    imageUrl ? (
-      <img
-        src={imageUrl}
-        alt="Profile"
-        className={`${currentSizeClass} rounded-full object-cover border border-gray-400 ${className}`}
-        onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-          e.currentTarget.onerror = null;
-          e.currentTarget.src = `https://placehold.co/${size === 'xl' ? '128x128' : '40x40'}/CCC/333?text=${username ? username[0].toUpperCase() : 'U'}`;
-        }}
-      />
-    ) : (
-      <div className={`${currentSizeClass} rounded-full bg-gray-200 flex items-center justify-center text-gray-700 font-bold ${className}`}>
-        {username ? username[0].toUpperCase() : 'U'}
-      </div>
-    )
+    <div
+      className={`relative flex items-center justify-center rounded-full bg-gray-300 text-white font-semibold flex-shrink-0 ${currentSizeClass} ${className || ''} ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
+    >
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={username || 'User Avatar'}
+          className="h-full w-full rounded-full object-cover"
+          onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+            // Fallback to initials if image fails to load
+            e.currentTarget.onerror = null;
+            e.currentTarget.style.display = 'none'; // Hide the broken image icon
+            const parent = e.currentTarget.parentElement;
+            if (parent) {
+              const initialsSpan = document.createElement('span');
+              initialsSpan.textContent = getInitials(username);
+              initialsSpan.className = 'absolute'; // Position correctly
+              parent.appendChild(initialsSpan);
+            }
+          }}
+        />
+      ) : (
+        <span>{getInitials(username)}</span>
+      )}
+    </div>
   );
 };
 

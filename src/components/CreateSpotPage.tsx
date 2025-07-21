@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { addDoc, collection, doc, serverTimestamp, Timestamp, updateDoc, setDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, Timestamp, setDoc } from 'firebase/firestore'; // Rimosso updateDoc
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import AlertMessage from './AlertMessage';
 import LoadingSpinner from './LoadingSpinner';
-import { EventType, EventData } from '../interfaces'; // Corretto l'importazione
+import { EventType, EventData } from '../interfaces';
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
 // Nominatim (OpenStreetMap) non richiede una chiave API per un uso leggero.
@@ -51,7 +51,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth: number, maxHeight: numbe
   });
 };
 
-const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEventCreated: () => void; eventToEdit: EventType | null; onCancelEdit: () => void; }) => {
+const CreateSpotPage = ({ onEventCreated, onCancelEdit }: { onEventCreated: () => void; onCancelEdit: () => void; }) => {
   const authContext = useAuth();
   const currentUser = authContext?.currentUser;
   const userId = authContext?.userId;
@@ -77,34 +77,21 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
   const [loadingLocationSuggestions, setLoadingLocationSuggestions] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  // Reset dei campi quando il componente viene montato o l'utente cambia (per nuova creazione)
   useEffect(() => {
-    if (eventToEdit) {
-      setTag(eventToEdit.tag.startsWith('#') ? eventToEdit.tag.substring(1) : eventToEdit.tag || '');
-      setDescription(eventToEdit.description || '');
-      setCoverImageUrl(eventToEdit.coverImage || '');
-      setCoverImageLink(eventToEdit.coverImage || '');
-      setDate(eventToEdit.date || '');
-      setTime(eventToEdit.time || '');
-      setLocationSearch(eventToEdit.locationName || ''); // Pre-fill search field
-      setLocationName(eventToEdit.locationName || '');
-      setLocationCoords(eventToEdit.locationCoords || null);
-      setTaggedUsers(eventToEdit.taggedUsers ? eventToEdit.taggedUsers.join(', ') : '');
-      setIsPublic(eventToEdit.isPublic);
-    } else {
-      setTag('');
-      setDescription('');
-      setCoverImageFile(null);
-      setCoverImageUrl('');
-      setCoverImageLink('');
-      setDate('');
-      setTime('');
-      setLocationSearch('');
-      setLocationName('');
-      setLocationCoords(null);
-      setTaggedUsers('');
-      setIsPublic(true);
-    }
-  }, [eventToEdit]);
+    setTag('');
+    setDescription('');
+    setCoverImageFile(null);
+    setCoverImageUrl('');
+    setCoverImageLink('');
+    setDate('');
+    setTime('');
+    setLocationSearch('');
+    setLocationName('');
+    setLocationCoords(null);
+    setTaggedUsers('');
+    setIsPublic(true);
+  }, [userId]); // Dipende da userId per reset quando l'utente si logga/slogga
 
   useEffect(() => {
     let isMounted = true;
@@ -180,7 +167,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !userId || !userProfile) { // Aggiunto userProfile per accedere a username e profileImage
-      setMessage('Devi essere loggato per creare/modificare uno Spot.');
+      setMessage('Devi essere loggato per creare uno Spot.');
       setMessageType('error');
       return;
     }
@@ -223,8 +210,6 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
       } finally {
         setIsUploadingImage(false);
       }
-    } else if (eventToEdit && eventToEdit.coverImage) {
-      finalCoverImageUrl = eventToEdit.coverImage;
     }
 
     try {
@@ -242,33 +227,23 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
         creatorId: userId,
         creatorUsername: userProfile.username, // Salvato username del creatore
         creatorProfileImage: userProfile.profileImage, // Salvata immagine profilo del creatore
-        likes: eventToEdit ? eventToEdit.likes : [],
-        commentCount: eventToEdit ? eventToEdit.commentCount : 0,
-        createdAt: eventToEdit ? eventToEdit.createdAt : serverTimestamp() as Timestamp
+        likes: [], // Nuovi spot iniziano con 0 like
+        commentCount: 0, // Nuovi spot iniziano con 0 commenti
+        createdAt: serverTimestamp() as Timestamp
       };
 
-      if (eventToEdit) {
-        const publicEventRef = doc(db, `artifacts/${appId}/public/data/events`, eventToEdit.id);
-        const privateEventRef = doc(db, `artifacts/${appId}/users/${userId}/events`, eventToEdit.id);
-
-        await updateDoc(publicEventRef, { ...eventData });
-        await updateDoc(privateEventRef, { ...eventData });
-
-        setMessage('Spot modificato con successo!');
-      } else {
-        // Aggiungi l'evento alla collezione privata dell'utente
-        const privateDocRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/events`), eventData);
-        // Se l'evento è pubblico, aggiungilo anche alla collezione pubblica con lo stesso ID
-        if (isPublic) {
-          await setDoc(doc(db, `artifacts/${appId}/public/data/events`, privateDocRef.id), eventData);
-        }
-        setMessage('Spot creato con successo!');
+      // Aggiungi l'evento alla collezione privata dell'utente
+      const privateDocRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/events`), eventData);
+      // Se l'evento è pubblico, aggiungilo anche alla collezione pubblica con lo stesso ID
+      if (isPublic) {
+        await setDoc(doc(db, `artifacts/${appId}/public/data/events`, privateDocRef.id), eventData);
       }
+      setMessage('Spot creato con successo!');
       setMessageType('success');
       onEventCreated();
     } catch (error) {
-      console.error("Error creating/editing event:", error);
-      setMessage('Errore nella creazione/modifica dello Spot: ' + (error as Error).message);
+      console.error("Error creating event:", error);
+      setMessage('Errore nella creazione dello Spot: ' + (error as Error).message);
       setMessageType('error');
     } finally {
       setIsSubmitting(false);
@@ -277,7 +252,7 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
 
   return (
     <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4">
-      <h1 className="text-4xl font-extrabold text-center mb-8 text-gray-800"> {eventToEdit ? 'Modifica Spot' : 'Crea Nuovo Spot'} </h1>
+      <h1 className="text-4xl font-extrabold text-center mb-8 text-gray-800"> Crea Nuovo Spot </h1>
       <form onSubmit={handleSubmit} className="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-xl border border-gray-200 space-y-6">
         <AlertMessage message={message} type={messageType} />
         <div>
@@ -437,19 +412,15 @@ const CreateSpotPage = ({ onEventCreated, eventToEdit, onCancelEdit }: { onEvent
           className="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg"
           disabled={isSubmitting || isUploadingImage}
         >
-          {isSubmitting || isUploadingImage ? (eventToEdit ? 'Salvataggio...' : 'Creazione in corso...') : (eventToEdit ? 'Salva Modifiche' : 'Crea Spot')}
+          {isSubmitting || isUploadingImage ? 'Creazione in corso...' : 'Crea Spot'}
         </button>
-        {
-          eventToEdit && (
-            <button
-              type="button"
-              onClick={onCancelEdit}
-              className="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg mt-4"
-            >
-              Annulla
-            </button>
-          )
-        }
+        <button
+          type="button"
+          onClick={onCancelEdit}
+          className="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-4 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 shadow-lg mt-4"
+        >
+          Annulla
+        </button>
       </form>
     </div>
   );

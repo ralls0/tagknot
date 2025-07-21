@@ -1,12 +1,12 @@
-import React from 'react';
-import { EventType, UserProfile } from '../interfaces';
+import React, { useState } from 'react'; // Importato useState
+import { EventType } from '../interfaces';
 import UserAvatar from './UserAvatar';
 import FollowButton from './FollowButton';
-import { User } from 'firebase/auth'; // Importa il tipo User da firebase/auth
+import { User } from 'firebase/auth';
 
 interface EventCardProps {
   event: EventType;
-  currentUser: User | null; // Usa il tipo User di Firebase
+  currentUser: User | null;
   onFollowToggle: (creatorId: string, isFollowing: boolean) => Promise<void>;
   followingUsers: string[];
   onEdit: (event: EventType) => void;
@@ -32,21 +32,53 @@ const EventCard: React.FC<EventCardProps> = ({
   const isOwnEvent = currentUser && event.creatorId === currentUser.uid;
   const isFollowingCreator = followingUsers.includes(event.creatorId);
   const isLiked = currentUser && event.likes?.includes(currentUser.uid);
+  const [showMenu, setShowMenu] = useState(false); // Stato per il menu a tre puntini
 
   const defaultCoverImage = event.locationName ?
     `https://placehold.co/600x400/E0E0E0/888?text=${encodeURIComponent(event.locationName.split(',')[0])}` :
     'https://placehold.co/600x400/E0E0E0/888?text=Nessuna+Immagine';
 
   const handleCardClick = () => {
-    // Passa l'evento corrente e, se disponibile, una lista di eventi correlati
-    // Per la vista profilo, `relatedEvents` potrebbe essere l'array di tutti gli eventi dell'utente
-    // Per altre viste (es. HomePage, SearchPage), `relatedEvents` dovrebbe essere l'array di eventi visualizzati in quella pagina
-    // Qui, per semplicità, passiamo solo l'evento singolo, ma puoi estenderlo se la card fa parte di una lista navigabile.
-    onShowEventDetail(event, [event], 'myEvents'); // Passa l'evento stesso in un array per la navigazione singola
+    onShowEventDetail(event, [event], 'myEvents');
+  };
+
+  const toggleMenu = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Evita che il click si propaghi alla card
+    setShowMenu(prev => !prev);
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden flex flex-col transition-transform duration-200 ease-in-out hover:scale-[1.01] hover:shadow-xl">
+    <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden flex flex-col transition-transform duration-200 ease-in-out hover:scale-[1.01] hover:shadow-xl relative"> {/* Aggiunto relative */}
+      {isOwnEvent && (
+        <div className="absolute top-4 right-4 z-10">
+          <button
+            onClick={toggleMenu}
+            className="p-2 rounded-full bg-white bg-opacity-75 hover:bg-opacity-100 focus:outline-none focus:ring-2 focus:ring-gray-300"
+            aria-label="Opzioni spot"
+          >
+            <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z"></path>
+            </svg>
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg py-1 z-20">
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit(event); setShowMenu(false); }}
+                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                Modifica
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(event.id, event.isPublic); setShowMenu(false); }}
+                className="block w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-100"
+              >
+                Elimina
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Contenitore principale cliccabile per aprire i dettagli */}
       <div onClick={handleCardClick} className="cursor-pointer">
         {event.coverImage ? (
@@ -65,7 +97,7 @@ const EventCard: React.FC<EventCardProps> = ({
         )}
 
         <div className="p-4">
-          <h3 className="text-xl font-bold text-gray-800 mb-2">#{event.tag} </h3>
+          <h3 className="text-xl font-bold text-gray-800 mb-2 truncate">{event.tag} </h3>
           {event.description && <p className="text-gray-700 text-sm mb-3 truncate"> {event.description} </p>}
           <div className="text-gray-600 text-xs space-y-1">
             <p className="flex items-center">
@@ -74,7 +106,7 @@ const EventCard: React.FC<EventCardProps> = ({
             </p>
             <p className="flex items-center">
               <svg className="w-4 h-4 mr-1 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"> </path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path> </svg>
-              {event.locationName || 'Nessuna posizione specificata'}
+              <span className="truncate">{event.locationName || 'Nessuna posizione specificata'}</span>
             </p>
           </div>
         </div>
@@ -83,8 +115,8 @@ const EventCard: React.FC<EventCardProps> = ({
       <div className="p-4 border-t border-gray-200 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <UserAvatar
-            imageUrl={event.creatorProfileImage} // Usato il campo dal tipo EventType
-            username={event.creatorUsername} // Usato il campo dal tipo EventType
+            imageUrl={event.creatorProfileImage}
+            username={event.creatorUsername}
             size="sm"
           />
           <span className="text-sm font-semibold text-gray-800"> {event.creatorUsername} </span>
@@ -106,18 +138,6 @@ const EventCard: React.FC<EventCardProps> = ({
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"> </path></svg>
           <span className="text-sm"> {event.commentCount || 0} </span>
         </button>
-        {isOwnEvent && (
-          <>
-            <button onClick={() => onEdit(event)} className="flex items-center space-x-1 text-gray-600 hover:text-blue-500 transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"> </path></svg>
-              <span className="text-sm">Modifica</span>
-            </button>
-            <button onClick={() => onDelete(event.id, event.isPublic)} className="flex items-center space-x-1 text-gray-600 hover:text-red-500 transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"> </path></svg>
-              <span className="text-sm">Elimina</span>
-            </button>
-          </>
-        )}
       </div>
     </div>
   );

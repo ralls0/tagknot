@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
-import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, arrayRemove, arrayUnion, writeBatch, addDoc, serverTimestamp, Timestamp, FieldValue, increment } from 'firebase/firestore'; // Importato increment
+import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, arrayRemove, arrayUnion, writeBatch, addDoc, serverTimestamp, Timestamp, increment } from 'firebase/firestore';
 
 // Import Firebase services from the centralized config file
 import { auth, db } from './firebaseConfig';
@@ -22,6 +22,7 @@ import EventDetailModal from './components/EventDetailModal';
 import ShareEventModal from './components/ShareEventModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import LoadingSpinner from './components/LoadingSpinner';
+import EditSpotModal from './components/EditSpotModal'; // Importa il nuovo componente
 
 // Hardcoded app ID for production - consider making this an environment variable if it changes per deployment
 const appId = "tagknot-app";
@@ -31,7 +32,6 @@ const App = () => {
   const { currentUser, loading, userId, userProfile } = useAuth();
   const [currentPage, setCurrentPage] = useState('myProfile');
   const [viewedUserId, setViewedUserId] = useState<string | null>(null);
-  const [eventToEdit, setEventToEdit] = useState<EventType | null>(null);
   const [showEventDetailModal, setShowEventDetailModal] = useState(false);
   const [selectedEventForModal, setSelectedEventForModal] = useState<EventType | null>(null);
   const [relatedEventsForModal, setRelatedEventsForModal] = useState<EventType[]>([]);
@@ -40,6 +40,11 @@ const App = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [eventToShare, setEventToShare] = useState<EventType | null>(null);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
+
+  // Stati per il nuovo modale di modifica
+  const [showEditSpotModal, setShowEditSpotModal] = useState(false);
+  const [eventToEditInModal, setEventToEditInModal] = useState<EventType | null>(null);
+
 
   // States for confirmation modals
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -80,9 +85,10 @@ const App = () => {
   const handleNavigate = (page: string, id: string | null = null) => {
     setCurrentPage(page);
     setViewedUserId(id);
-    setEventToEdit(null);
     setShowEventDetailModal(false);
     setShowShareModal(false);
+    setShowEditSpotModal(false); // Reset del modale di modifica
+    setEventToEditInModal(null); // Reset dell'evento da modificare
   };
 
   const handleLogout = async () => {
@@ -173,39 +179,37 @@ const App = () => {
     if (!currentUser || !userId || !userProfile) return;
 
     const publicEventRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
-    const privateEventRef = doc(db, `artifacts/${appId}/users/${userId}/events`, eventId); // Riferimento al documento privato
+    const eventDocSnap = await getDoc(publicEventRef);
+
+    if (!eventDocSnap.exists()) {
+      console.warn("Event not found for like toggle.");
+      return;
+    }
+
+    const eventCreatorId = eventDocSnap.data().creatorId;
+    const privateEventRef = doc(db, `artifacts/${appId}/users/${eventCreatorId}/events`, eventId);
 
     try {
-      const batch = writeBatch(db); // Usa un batch per aggiornamenti atomici
-      const eventDocSnap = await getDoc(publicEventRef); // Ottieni i dati più recenti per controllare il creatore
-
-      if (!eventDocSnap.exists()) {
-        console.warn("Event not found for like toggle.");
-        return;
-      }
+      const batch = writeBatch(db);
 
       const likeUpdate = isLiked ? arrayRemove(userId) : arrayUnion(userId);
-      const likeCountIncrement = isLiked ? increment(-1) : increment(1);
 
       // Aggiorna il documento pubblico
       batch.update(publicEventRef, {
-        likes: likeUpdate,
-        likesCount: likeCountIncrement // Usa FieldValue.increment per il contatore
+        likes: likeUpdate
       });
 
       // Se l'utente corrente è il creatore dell'evento, aggiorna anche il documento privato
-      if (eventDocSnap.data().creatorId === userId) {
+      if (eventCreatorId === userId) {
         batch.update(privateEventRef, {
-          likes: likeUpdate,
-          likesCount: likeCountIncrement // Usa FieldValue.increment per il contatore
+          likes: likeUpdate
         });
       }
 
-      await batch.commit(); // Esegui tutte le operazioni del batch
+      await batch.commit();
 
       // Logica per la notifica solo se non è il proprio evento
-      if (eventDocSnap.data().creatorId !== userId) {
-        const eventCreatorId = eventDocSnap.data().creatorId;
+      if (eventCreatorId !== userId) {
         const notificationData: NotificationData = {
           type: 'like',
           fromUserId: userId,
@@ -233,18 +237,34 @@ const App = () => {
     setShowShareModal(true);
   };
 
+  // Funzione per mostrare il modale di visualizzazione dettagli
   const handleShowEventDetail = (event: EventType, relatedEvents: EventType[] = [], activeTab: string = '', isShareAction: boolean = false) => {
     setSelectedEventForModal(event);
     setRelatedEventsForModal(relatedEvents);
     setModalActiveTab(activeTab);
-    const index = relatedEvents.findIndex(e => e.id === event.id);
-    setInitialEventIndexForModal(index !== -1 ? index : 0);
+    setInitialEventIndexForModal(relatedEvents.findIndex(e => e.id === event.id));
+    setShowEditSpotModal(false); // Assicurati che il modale di modifica sia chiuso
+
     if (isShareAction) {
       handleShareEvent(event);
     } else {
       setShowEventDetailModal(true);
     }
   };
+
+  // Funzione per mostrare il modale di modifica dello spot
+  const handleEditEventInModal = (event: EventType) => {
+    setEventToEditInModal(event);
+    setShowEditSpotModal(true);
+    setShowEventDetailModal(false); // Assicurati che il modale di dettaglio sia chiuso
+  };
+
+  const handleEditSaveSuccess = () => {
+    setShowEditSpotModal(false); // Chiudi il modale di modifica
+    // Potresti voler ricaricare gli eventi o navigare, se necessario
+    // handleNavigate('myProfile'); // Esempio: naviga al profilo dopo il salvataggio
+  };
+
 
   if (loading) {
     return <LoadingSpinner message="Caricamento..." />;
@@ -261,23 +281,22 @@ const App = () => {
             {/* HomePage commentata come richiesto */}
             {/* {currentPage === 'home' && <HomePage onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} />} */}
 
-            {currentPage === 'createEvent' && <CreateSpotPage onEventCreated={handleEventCreated} eventToEdit={eventToEdit} onCancelEdit={() => handleNavigate('myProfile')} />}
+            {/* CreateSpotPage è solo per la creazione */}
+            {currentPage === 'createEvent' && <CreateSpotPage onEventCreated={handleEventCreated} onCancelEdit={() => handleNavigate('myProfile')} />}
             {
-              currentPage === 'myProfile' && <UserProfileDisplay userIdToDisplay={userId || ''} onNavigate={handleNavigate} onEditEvent={(event) => {
-                setEventToEdit(event);
-                handleNavigate('createEvent');
-              }} onDeleteEvent={handleDeleteEvent} onRemoveTagFromEvent={handleRemoveTagFromEvent} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} />}
+              currentPage === 'myProfile' && <UserProfileDisplay userIdToDisplay={userId || ''} onNavigate={handleNavigate} onEditEvent={handleEditEventInModal} onDeleteEvent={handleDeleteEvent} onRemoveTagFromEvent={handleRemoveTagFromEvent} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} />}
             {currentPage === 'settings' && <SettingsPage onNavigate={handleNavigate} />}
 
             {/* SearchPage commentata come richiesto */}
             {/* {currentPage === 'search' && <SearchPage onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} />} */}
 
-            {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay userIdToDisplay={viewedUserId} onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onEditEvent={async () => { }} onDeleteEvent={async () => { }} onRemoveTagFromEvent={async () => { }} />}
+            {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay userIdToDisplay={viewedUserId} onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onEditEvent={handleEditEventInModal} onDeleteEvent={async () => { }} onRemoveTagFromEvent={async () => { }} />}
             {currentPage === 'notifications' && <NotificationsPage setUnreadNotificationsCount={setUnreadNotificationsCount} />}
           </main>
           {
             showEventDetailModal && selectedEventForModal && (
               <EventDetailModal
+                key={selectedEventForModal.id} // Aggiunto key per forzare il re-mount e il reset dello stato
                 event={selectedEventForModal}
                 onClose={() => setShowEventDetailModal(false)}
                 relatedEvents={relatedEventsForModal}
@@ -285,8 +304,16 @@ const App = () => {
                 activeTab={modalActiveTab}
                 onRemoveTagFromEvent={handleRemoveTagFromEvent}
                 onLikeToggle={handleLikeToggle}
-                onAddComment={handleAddComment}
                 onShareEvent={handleShareEvent}
+              />
+            )}
+          {
+            showEditSpotModal && eventToEditInModal && (
+              <EditSpotModal
+                key={eventToEditInModal.id} // Forza il re-mount per resettare lo stato interno
+                event={eventToEditInModal}
+                onClose={() => setShowEditSpotModal(false)}
+                onSaveSuccess={handleEditSaveSuccess}
               />
             )}
           {
