@@ -1,10 +1,5 @@
 import React from 'react';
 
-interface AlertMessageProps {
-  message: string;
-  type: 'success' | 'error' | '';
-}
-
 const AlertMessage = ({ message, type }: AlertMessageProps) => {
   if (!message) return null;
   const bgColor = type === 'success' ? 'bg-green-100' : 'bg-red-100';

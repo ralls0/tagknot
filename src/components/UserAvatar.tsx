@@ -1,12 +1,5 @@
 import React from 'react';
 
-interface UserAvatarProps {
-  imageUrl: string | undefined | null;
-  username: string | undefined | null;
-  size?: 'sm' | 'md' | 'lg' | 'xl'; // Define sizes for flexibility
-  className?: string;
-}
-
 const UserAvatar = ({ imageUrl, username, size = 'md', className = '' }: UserAvatarProps) => {
   const sizeClasses = {
     sm: 'w-8 h-8 text-sm',
