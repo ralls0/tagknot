@@ -38,6 +38,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth: number, maxHeight: numbe
 
         const ctx = canvas.getContext('2d');
         if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
           resolve(canvas.toDataURL('image/jpeg', 0.8));
         } else {
           reject(new Error("Impossibile ottenere il contesto del canvas."));

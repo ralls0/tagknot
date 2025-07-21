@@ -96,3 +96,9 @@ export interface SpotCalendarProps {
   spots: EventType[];
   onShowSpotDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
 }
+
+
+export interface AlertMessageProps {
+  message: string;
+  type: 'success' | 'error' | '';
+}

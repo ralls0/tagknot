@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertMessageProps } from '../interfaces';
 
 const AlertMessage = ({ message, type }: AlertMessageProps) => {
   if (!message) return null;

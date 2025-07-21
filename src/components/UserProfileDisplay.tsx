@@ -8,7 +8,7 @@ import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
 import EventCard from './EventCard';
 import SpotCalendar from './SpotCalendar'; // Importa il nuovo componente del calendario
-import { EventType, UserProfileData } from '../interfaces';
+import { EventType, UserProfileData, UserProfile, EventData } from '../interfaces';
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
 
@@ -80,7 +80,8 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
 
     const unsubscribeMyEvents = onSnapshot(myEventsQuery, (snapshot) => {
       if (isMounted) {
-        const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventType) }));
+        // Corretto: Cast a EventData prima di aggiungere l'ID
+        const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventData) }) as EventType);
         setMyEvents(fetchedEvents);
         setLoadingMyEvents(false);
       }

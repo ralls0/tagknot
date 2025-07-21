@@ -6,7 +6,7 @@ import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, 
 import { auth, db } from './firebaseConfig';
 
 // Import shared interfaces
-import { EventType, UserProfile, NotificationType, EventData, UserProfileData, CommentData } from './interfaces';
+import { EventType, UserProfile, NotificationType, EventData, UserProfileData, CommentData, NotificationData } from './interfaces';
 
 // Import components
 import { AuthProvider, useAuth } from './components/AuthContext';
@@ -29,7 +29,8 @@ const appId = "tagknot-app";
 // Main App Component
 const App = () => {
   const { currentUser, loading, userId, userProfile } = useAuth();
-  const [currentPage, setCurrentPage] = useState('home');
+  // Modificato lo stato iniziale di currentPage da 'home' a 'myProfile'
+  const [currentPage, setCurrentPage] = useState('myProfile');
   const [viewedUserId, setViewedUserId] = useState<string | null>(null);
   const [eventToEdit, setEventToEdit] = useState<EventType | null>(null);
   const [showEventDetailModal, setShowEventDetailModal] = useState(false);
@@ -88,6 +89,7 @@ const App = () => {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      // Dopo il logout, puoi reindirizzare alla pagina di login o a una home page pubblica
       handleNavigate('home');
     } catch (error) {
       console.error("Error during logout:", error);
@@ -95,7 +97,8 @@ const App = () => {
   };
 
   const handleLoginSuccess = () => {
-    handleNavigate('home');
+    // Dopo il login, reindirizza alla pagina del profilo
+    handleNavigate('myProfile');
   };
 
   const handleEventCreated = () => {
@@ -205,7 +208,6 @@ const App = () => {
   };
 
   const handleAddComment = async (eventId: string, commentText: string) => {
-    // This function is already implemented within EventDetailModal and calls the Firestore logic directly.
     console.log(`Comment for event ${eventId}: ${commentText}`);
   };
 

@@ -4,7 +4,7 @@ import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
-import { NotificationType } from '../interfaces';
+import { NotificationType, NotificationData } from '../interfaces';
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
 
@@ -37,7 +37,8 @@ const NotificationsPage = ({ setUnreadNotificationsCount }: { setUnreadNotificat
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (isMounted) {
         setUnreadNotificationsCount(snapshot.size);
-        const fetchedNotifications = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as NotificationType) }));
+        // Corretto: Cast a NotificationData prima di aggiungere l'ID
+        const fetchedNotifications = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as NotificationData) }) as NotificationType);
         setNotifications(fetchedNotifications);
         setLoading(false);
         setMessage('');
