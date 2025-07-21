@@ -91,3 +91,8 @@ export interface FollowButtonProps {
   onToggle: () => void;
   disabled?: boolean;
 }
+
+export interface SpotCalendarProps {
+  spots: EventType[];
+  onShowSpotDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+}

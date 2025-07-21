@@ -7,7 +7,8 @@ import FollowButton from './FollowButton';
 import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
 import EventCard from './EventCard';
-import { EventType, UserProfileData, EventData, UserProfile } from '../interfaces';
+import SpotCalendar from './SpotCalendar'; // Importa il nuovo componente del calendario
+import { EventType, UserProfileData } from '../interfaces';
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
 
@@ -19,11 +20,9 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [myEvents, setMyEvents] = useState<EventType[]>([]);
-  // const [taggedEvents, setTaggedEvents] = useState<EventType[]>([]); // Commentato come richiesto
-  const [activeTab, setActiveTab] = useState('myEvents'); // Mantiene solo 'myEvents'
+  const [activeTab, setActiveTab] = useState('myEvents'); // Aggiunto 'calendar' come opzione
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [loadingMyEvents, setLoadingMyEvents] = useState(true);
-  // const [loadingTaggedEvents, setLoadingTaggedEvents] = useState(true); // Commentato come richiesto
   const [isFollowing, setIsFollowing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +33,6 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
       if (isMounted) {
         setLoadingProfile(false);
         setLoadingMyEvents(false);
-        // setLoadingTaggedEvents(false); // Commentato
         setError("ID utente non fornito per la visualizzazione del profilo.");
       }
       return;
@@ -49,37 +47,6 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
           if (currentUserProfile && currentUserProfile.following) {
             setIsFollowing(currentUserProfile.following.includes(userIdToDisplay));
           }
-          // Logica per gli eventi taggati commentata come richiesto
-          /*
-          const profileTagForTaggedEvents = fetchedProfile.profileTag || (fetchedProfile.email ? fetchedProfile.email.split('@')[0] : '');
-          if (profileTagForTaggedEvents) {
-            const taggedEventsQuery = query(
-              collection(db, `artifacts/${appId}/public/data/events`),
-              where('taggedUsers', 'array-contains', profileTagForTaggedEvents),
-              orderBy('createdAt', 'desc')
-            );
-            const unsubscribeTaggedEvents = onSnapshot(taggedEventsQuery, (snapshot) => {
-              if (isMounted) {
-                const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventData) }));
-                setTaggedEvents(fetchedEvents);
-                setLoadingTaggedEvents(false);
-              }
-            }, (err) => {
-              if (isMounted) {
-                console.error("Error fetching tagged events:", err);
-                setError("Errore nel caricamento degli eventi taggati.");
-                setLoadingTaggedEvents(false);
-              }
-            });
-            return () => {
-              unsubscribeTaggedEvents();
-            };
-          } else {
-            if (isMounted) {
-              setLoadingTaggedEvents(false);
-            }
-          }
-          */
         } else {
           setProfile(null);
           setError("Profilo utente non trovato.");
@@ -113,7 +80,7 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
 
     const unsubscribeMyEvents = onSnapshot(myEventsQuery, (snapshot) => {
       if (isMounted) {
-        const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventData) }));
+        const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventType) }));
         setMyEvents(fetchedEvents);
         setLoadingMyEvents(false);
       }
@@ -222,16 +189,21 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
               onClick={() => setActiveTab('myEvents')}
               className={`py-3 px-6 text-lg font-semibold ${activeTab === 'myEvents' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
             >
-              Eventi Creati ({myEvents.length})
+              Spot Creati ({myEvents.length})
             </button>
-            {/* Bottone "Eventi Taggati" rimosso come richiesto */}
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`py-3 px-6 text-lg font-semibold ${activeTab === 'calendar' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
+            >
+              Calendario
+            </button>
           </div>
         </div>
 
         <div className="flex flex-col items-center gap-6">
           {activeTab === 'myEvents' && (
             myEvents.length === 0 ? (
-              <p className="text-center text-gray-600 col-span-full mt-10"> Nessun evento creato.</p>
+              <p className="text-center text-gray-600 col-span-full mt-10"> Nessuno Spot creato.</p>
             ) : (
               myEvents.map((event) => (
                 <div key={event.id} className="w-full">
@@ -251,7 +223,9 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
               ))
             )
           )}
-          {/* Sezione per gli eventi taggati rimossa come richiesto */}
+          {activeTab === 'calendar' && (
+            <SpotCalendar spots={myEvents} onShowSpotDetail={onShowEventDetail} />
+          )}
         </div>
       </div>
     </div>
