@@ -337,7 +337,7 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
               value={tag}
               onChange={(e) => setTag(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-              placeholder={contentType === 'spot' ? 'NomeSpot' : 'NomeKnot'} // Rimosso il commento
+              placeholder={contentType === 'spot' ? 'NomeSpot' : 'NomeKnot'}
               required
             />
           </div>

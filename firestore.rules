@@ -1,58 +1,121 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Definizione dell'ID dell'app, dovrebbe corrispondere a __app_id nel tuo codice
-    function appId() {
-      return "tagknot-app";
+
+    // Regola generica per i dati privati dell'utente.
+    // Consente a un utente autenticato di leggere e scrivere solo nei propri documenti privati
+    // sotto il percorso /artifacts/{appId}/users/{userId}/
+    match /artifacts/{appId}/users/{userId}/{documents=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Regole per i profili utente
-    match /artifacts/{currentAppId}/users/{userId}/profile/data {
-      allow read: if request.auth != null; // Tutti gli utenti autenticati possono leggere i profili
-      allow write: if request.auth != null && request.auth.uid == userId; // Solo l'utente proprietario può scrivere il proprio profilo
+    // Regole specifiche per la sub-collezione 'profile/data' sotto ogni utente.
+    // Questa collezione contiene i dettagli del profilo (username, profileTag, profileImage, followers, following).
+    // - Qualsiasi utente autenticato può leggere i profili (necessario per la ricerca utenti e la visualizzazione del profilo di altri).
+    // - Solo il proprietario del profilo può creare o aggiornare il proprio profilo.
+    match /artifacts/{appId}/users/{userId}/profile/data {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Regole per gli eventi privati degli utenti
-    match /artifacts/{currentAppId}/users/{userId}/events/{eventId} {
-      allow read: if request.auth != null && request.auth.uid == userId; // Solo l'utente proprietario può leggere i propri eventi
-      allow write: if request.auth != null && request.auth.uid == userId; // Solo l'utente proprietario può scrivere i propri eventi
-      allow update: if request.auth != null && request.auth.uid == userId; // Solo l'utente proprietario può aggiornare i propri eventi
-      allow delete: if request.auth != null && request.auth.uid == userId; // Solo l'utente proprietario può eliminare i propri eventi
+    // Regole per la collezione di eventi pubblici.
+    // Questi eventi sono accessibili a tutti gli utenti autenticati per la lettura (feed, ricerca).
+    // La creazione, l'aggiornamento e l'eliminazione sono consentite solo al creatore dell'evento.
+    match /artifacts/{appId}/public/data/events/{eventId} {
+      allow read: if request.auth != null; // Qualsiasi utente autenticato può leggere
+
+      // Permessi per creazione, aggiornamento ed eliminazione dell'evento:
+      // Solo il creatore dell'evento può eseguire queste operazioni.
+      allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
+
+      // Permessi specifici per aggiornamenti che non siano creazione/eliminazione completa dell'evento,
+      // ma modifiche a campi come 'likes' o 'taggedUsers' o 'knotIds'.
+      allow update: if request.auth != null && (
+        // L'utente è il creatore dell'evento (copre tutte le modifiche)
+        resource.data.creatorId == request.auth.uid ||
+
+        // L'utente sta aggiungendo o rimuovendo il proprio like
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+          request.resource.data.likes is list &&
+          resource.data.likes is list &&
+          (
+            request.resource.data.likes.hasAll(resource.data.likes) || // Aggiunta di like
+            resource.data.likes.hasAll(request.resource.data.likes)    // Rimozione di like
+          )
+        ) ||
+
+        // L'utente sta rimuovendo il proprio tag dall'evento
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['taggedUsers']) &&
+          request.resource.data.taggedUsers is list &&
+          resource.data.taggedUsers is list &&
+          resource.data.taggedUsers.hasAny([request.auth.token.profileTag]) && // Richiede che il tag dell'utente sia presente prima
+          !(request.resource.data.taggedUsers.hasAny([request.auth.token.profileTag])) // E non sia presente dopo (rimozione)
+        ) ||
+        // L'utente sta modificando l'array knotIds (aggiungendo/rimuovendo un knotId)
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['knotIds']) &&
+          request.resource.data.knotIds is list &&
+          resource.data.knotIds is list &&
+          (
+            request.resource.data.knotIds.hasAll(resource.data.knotIds) || // Aggiunta di knotId
+            resource.data.knotIds.hasAll(request.resource.data.knotIds)    // Rimozione di knotId
+          )
+        )
+      );
     }
 
-    // Regole per i knot privati degli utenti
-    match /artifacts/{currentAppId}/users/{userId}/knots/{knotId} {
-      allow read: if request.auth != null && request.auth.uid == userId; // Solo l'utente proprietario può leggere i propri knot
-      allow write: if request.auth != null && request.auth.uid == userId; // Solo l'utente proprietario può scrivere i propri knot
+    // Regole per la collezione di knot pubblici.
+    // Questi knot sono accessibili a tutti gli utenti autenticati per la lettura.
+    // La creazione, l'aggiornamento e l'eliminazione sono consentite solo al creatore del knot.
+    match /artifacts/{appId}/public/data/knots/{knotId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
+
+      // Permessi specifici per aggiornamenti all'array spotIds (aggiunta/rimozione di spotId)
+      allow update: if request.auth != null && (
+        resource.data.creatorId == request.auth.uid || // Il creatore può fare qualsiasi update
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['spotIds']) &&
+          request.resource.data.spotIds is list &&
+          resource.data.spotIds is list &&
+          (
+            request.resource.data.spotIds.hasAll(resource.data.spotIds) || // Aggiunta di spotId
+            resource.data.spotIds.hasAll(request.resource.data.spotIds)    // Rimozione di spotId
+          )
+        )
+      );
     }
 
-    // Regole per gli eventi pubblici (accessibili a tutti gli utenti autenticati)
-    match /artifacts/{currentAppId}/public/data/events/{eventId} {
-      allow read: if request.auth != null; // Tutti gli utenti autenticati possono leggere gli eventi pubblici
-      allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid; // Solo il creatore può creare
-      allow update: if request.auth != null && request.resource.data.creatorId == request.auth.uid; // Solo il creatore può aggiornare
-      allow delete: if request.auth != null && request.auth.uid == resource.data.creatorId; // Solo il creatore può eliminare
+    // Regole per la sub-collezione 'comments' sotto ogni evento pubblico.
+    // - Qualsiasi utente autenticato può leggere i commenti.
+    // - Qualsiasi utente autenticato può creare un commento.
+    // - L'aggiornamento e l'eliminazione di un commento sono consentite solo al creatore del commento.
+    match /artifacts/{appId}/public/data/events/{eventId}/comments/{commentId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
-    // Regole per i knot pubblici (accessibili a tutti gli utenti autenticati)
-    match /artifacts/{currentAppId}/public/data/knots/{knotId} {
-      allow read: if request.auth != null; // Tutti gli utenti autenticati possono leggere i knot pubblici
-      allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid; // Solo il creatore può creare
-      allow update: if request.auth != null && request.resource.data.creatorId == request.auth.uid; // Solo il creatore può aggiornare
-      allow delete: if request.auth != null && request.auth.uid == resource.data.creatorId; // Solo il creatore può eliminare
+    // Regole per la sub-collezione 'notifications' sotto ogni utente.
+    // Solo il proprietario delle notifiche può leggerle o marcarle come lette.
+    match /artifacts/{appId}/users/{userId}/notifications/{notificationId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Regole per i commenti (sotto eventi pubblici)
-    match /artifacts/{currentAppId}/public/data/events/{eventId}/comments/{commentId} {
-      allow read: if request.auth != null; // Tutti gli utenti autenticati possono leggere i commenti
-      allow create: if request.auth != null; // Tutti gli utenti autenticati possono creare commenti
-      // Nessuna regola di update/delete per i commenti in questo contesto, ma puoi aggiungerle se necessario
+    // Permette la lettura della collezione 'profile' per le Collection Group Queries
+    // Questo è necessario per la ricerca di utenti per username.
+    // NOTA: Questa regola è per collectionGroup, non per documenti specifici.
+    match /{path=**}/profile/{docId} {
+        allow read: if request.auth != null;
     }
 
-    // Regole per le notifiche
-    match /artifacts/{currentAppId}/users/{userId}/notifications/{notificationId} {
-      allow read: if request.auth != null && request.auth.uid == userId; // Solo l'utente proprietario può leggere le proprie notifiche
-      allow write: if false; // Le notifiche sono create dal sistema, non dagli utenti direttamente
+    // Altre collezioni/documenti bloccati per default
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

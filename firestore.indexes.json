@@ -1,4 +1,110 @@
+// {
+//   "indexes": [],
+//   "fieldOverrides": []
+// }
+
 {
-  "indexes": [],
+  "indexes": [
+    // Indice per HomePage e UserProfileDisplay (eventi pubblici)
+    // Query: collection(db, `artifacts/${appId}/public/data/events`), where('isPublic', '==', true), orderBy('createdAt', 'desc')
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "isPublic", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    },
+    // Indice per UserProfileDisplay (eventi taggati)
+    // Query: collection(db, `artifacts/${appId}/public/data/events`), where('taggedUsers', 'array-contains', profileTagForTaggedEvents), orderBy('createdAt', 'desc')
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "taggedUsers", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    },
+    // Indice per UserProfileDisplay (eventi creati da altri utenti, pubblici)
+    // Query: collection(db, `artifacts/${appId}/public/data/events`), where('creatorId', '==', userIdToDisplay), where('isPublic', '==', true), orderBy('createdAt', 'desc')
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "creatorId", "mode": "ASCENDING" },
+        { "fieldPath": "isPublic", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    },
+    // Indice per NotificationsPage (notifiche)
+    // Query: collection(db, `artifacts/${appId}/users/${userId}/notifications`), orderBy('createdAt', 'desc')
+    // Query: collection(db, `artifacts/${appId}/users/${userId}/notifications`), where('read', '==', false)
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "read", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    },
+    // Indice per SearchPage (ricerca eventi per tag)
+    // Query: collection(db, `artifacts/${appId}/public/data/events`), where('isPublic', '==', true), where('tag', '>=', searchTerm), where('tag', '<=', searchTerm + '\uf8ff')
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "isPublic", "mode": "ASCENDING" },
+        { "fieldPath": "tag", "mode": "ASCENDING" }
+      ]
+    },
+    // Indice per SearchPage (ricerca eventi per locationName)
+    // Query: collection(db, `artifacts/${appId}/public/data/events`), where('isPublic', '==', true), where('locationName', '>=', searchTerm), where('locationName', '<=', searchTerm + '\uf8ff')
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "isPublic", "mode": "ASCENDING" },
+        { "fieldPath": "locationName", "mode": "ASCENDING" }
+      ]
+    },
+    // Indice per SearchPage e ShareEventModal (ricerca utenti per username)
+    // Query: collectionGroup(db, 'profile'), where('username', '>=', searchTerm), where('username', '<=', searchTerm + '\uf8ff')
+    {
+      "collectionGroup": "profile",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "username", "mode": "ASCENDING" }
+      ]
+    },
+    // NUOVO: Indice per query sui knotIds negli eventi (quando uno spot viene eliminato)
+    // Query: collectionGroup(db, 'events'), where('knotIds', 'array-contains', knotId)
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "knotIds", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    // NUOVO: Indice per query sugli spotIds nei knot (quando un knot viene eliminato)
+    // Query: collectionGroup(db, 'knots'), where('spotIds', 'array-contains', spotId)
+    {
+      "collectionGroup": "knots",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "spotIds", "arrayConfig": "CONTAINS" }
+      ]
+    },
+    // NUOVO: Indice per query sui knot per utente e status (in UserProfileDisplay)
+    // Query: collection(db, `artifacts/${appId}/users/${userIdToDisplay}/knots`), orderBy('createdAt', 'desc')
+    {
+      "collectionGroup": "knots",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "creatorId", "mode": "ASCENDING" },
+        { "fieldPath": "status", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

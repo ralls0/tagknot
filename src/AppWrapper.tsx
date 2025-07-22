@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
-import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, arrayRemove, arrayUnion, writeBatch, addDoc, serverTimestamp, Timestamp, increment } from 'firebase/firestore';
+import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, arrayRemove, arrayUnion, writeBatch, addDoc, serverTimestamp, Timestamp, increment, getDocs } from 'firebase/firestore';
 
 // Import Firebase services from the centralized config file
 import { auth, db } from './firebaseConfig';
 
 // Import shared interfaces
-import { EventType, UserProfile, NotificationType, EventData, UserProfileData, CommentData, NotificationData, KnotType } from './interfaces'; // Importa KnotType
+import { EventType, UserProfile, NotificationType, EventData, UserProfileData, CommentData, NotificationData, KnotType } from './interfaces';
 
 // Import components
 import { AuthProvider, useAuth } from './components/AuthContext';
@@ -24,6 +24,7 @@ import ConfirmationModal from './components/ConfirmationModal';
 import LoadingSpinner from './components/LoadingSpinner';
 import EditSpotModal from './components/EditSpotModal'; // Importa il nuovo componente
 import AddSpotToKnotModal from './components/AddSpotToKnotModal'; // Nuovo componente
+import EditKnotModal from './components/EditKnotModal'; // Nuovo componente per la modifica dei Knot
 
 // Hardcoded app ID for production - consider making this an environment variable if it changes per deployment
 const appId = "tagknot-app";
@@ -42,19 +43,25 @@ const App = () => {
   const [eventToShare, setEventToShare] = useState<EventType | null>(null);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
-  // Stati per il nuovo modale di modifica
+  // Stati per il nuovo modale di modifica spot
   const [showEditSpotModal, setShowEditSpotModal] = useState(false);
   const [eventToEditInModal, setEventToEditInModal] = useState<EventType | null>(null);
 
   // Stati per il modale "Aggiungi a Knot"
-  const [showAddSpotToKnotModal, setShowAddSpotToKnotModal] = useState(false);
+  const [showAddSpotToKnotModal, setShowAddSpotToKnot] = useState(false);
   const [spotToAddtoKnot, setSpotToAddtoKnot] = useState<EventType | null>(null);
 
-  // States for confirmation modals
+  // Stati per il modale di modifica knot
+  const [showEditKnotModal, setShowEditKnotModal] = useState(false);
+  const [knotToEditInModal, setKnotToEditInModal] = useState<KnotType | null>(null);
+
+  // Stati per i modali di conferma eliminazione
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [eventToDelete, setEventToDelete] = useState<{ id: string; isPublic: boolean } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; type: 'event' | 'knot'; isPublic?: boolean; creatorId?: string } | null>(null);
+
   const [showRemoveTagConfirm, setShowRemoveTagConfirm] = useState(false);
   const [eventToRemoveTagFrom, setEventToRemoveTagFrom] = useState<string | null>(null);
+
 
   useEffect(() => {
     let isMounted = true;
@@ -91,10 +98,12 @@ const App = () => {
     setViewedUserId(id);
     setShowEventDetailModal(false);
     setShowShareModal(false);
-    setShowEditSpotModal(false); // Reset del modale di modifica
+    setShowEditSpotModal(false); // Reset del modale di modifica spot
     setEventToEditInModal(null); // Reset dell'evento da modificare
-    setShowAddSpotToKnotModal(false); // Reset del modale aggiungi a knot
+    setShowAddSpotToKnot(false); // Reset del modale aggiungi a knot
     setSpotToAddtoKnot(null); // Reset dello spot da aggiungere a knot
+    setShowEditKnotModal(false); // Reset del modale di modifica knot
+    setKnotToEditInModal(null); // Reset del knot da modificare
   };
 
   const handleLogout = async () => {
@@ -114,33 +123,80 @@ const App = () => {
     handleNavigate('myProfile');
   };
 
-  const handleDeleteEvent = async (eventId: string, isPublic: boolean) => {
-    setEventToDelete({ id: eventId, isPublic: isPublic });
+  const handleDeleteItem = (id: string, type: 'event' | 'knot', isPublic?: boolean, creatorId?: string) => {
+    setItemToDelete({ id, type, isPublic, creatorId });
     setShowDeleteConfirm(true);
   };
 
   const confirmDelete = async () => {
-    if (eventToDelete && userId) {
-      try {
-        const batch = writeBatch(db);
-        batch.delete(doc(db, `artifacts/${appId}/users/${userId}/events`, eventToDelete.id));
-        if (eventToDelete.isPublic) {
-          batch.delete(doc(db, `artifacts/${appId}/public/data/events`, eventToDelete.id));
+    if (!itemToDelete || !userId) return;
+
+    const { id, type, isPublic, creatorId } = itemToDelete;
+    const batch = writeBatch(db);
+
+    try {
+      if (type === 'event') {
+        // 1. Elimina lo spot dalle collezioni private e pubbliche
+        batch.delete(doc(db, `artifacts/${appId}/users/${userId}/events`, id));
+        if (isPublic) {
+          batch.delete(doc(db, `artifacts/${appId}/public/data/events`, id));
         }
-        await batch.commit();
-        console.log("Event deleted successfully!");
-      } catch (error) {
-        console.error("Error deleting event:", error);
-      } finally {
-        setShowDeleteConfirm(false);
-        setEventToDelete(null);
+
+        // 2. Trova tutti i knot che contengono questo spot e rimuovi la referenza
+        const publicKnotsQuery = query(collection(db, `artifacts/${appId}/public/data/knots`), where('spotIds', 'array-contains', id));
+        const privateKnotsQuery = query(collection(db, `artifacts/${appId}/users/${userId}/knots`), where('spotIds', 'array-contains', id));
+
+        const [publicKnotsSnapshot, privateKnotsSnapshot] = await Promise.all([
+          getDocs(publicKnotsQuery),
+          getDocs(privateKnotsQuery)
+        ]);
+
+        publicKnotsSnapshot.forEach(knotDoc => {
+          batch.update(knotDoc.ref, { spotIds: arrayRemove(id) });
+        });
+        privateKnotsSnapshot.forEach(knotDoc => {
+          batch.update(knotDoc.ref, { spotIds: arrayRemove(id) });
+        });
+
+      } else if (type === 'knot') {
+        // 1. Elimina il knot dalle collezioni private e pubbliche
+        batch.delete(doc(db, `artifacts/${appId}/users/${userId}/knots`, id));
+        if (isPublic) { // Per i knot, isPublic si basa sullo status del knot
+          batch.delete(doc(db, `artifacts/${appId}/public/data/knots`, id));
+        }
+
+        // 2. Trova tutti gli spot che appartengono a questo knot e rimuovi la referenza
+        const publicEventsQuery = query(collection(db, `artifacts/${appId}/public/data/events`), where('knotIds', 'array-contains', id));
+        const privateEventsQuery = query(collection(db, `artifacts/${appId}/users/${userId}/events`), where('knotIds', 'array-contains', id));
+
+        const [publicEventsSnapshot, privateEventsSnapshot] = await Promise.all([
+          getDocs(publicEventsQuery),
+          getDocs(privateEventsQuery)
+        ]);
+
+        publicEventsSnapshot.forEach(eventDoc => {
+          batch.update(eventDoc.ref, { knotIds: arrayRemove(id) });
+        });
+        privateEventsSnapshot.forEach(eventDoc => {
+          batch.update(eventDoc.ref, { knotIds: arrayRemove(id) });
+        });
       }
+
+      await batch.commit();
+      console.log(`${type} eliminato con successo!`);
+      // Re-naviga o aggiorna la UI dopo l'eliminazione
+      handleNavigate('myProfile');
+    } catch (error) {
+      console.error(`Errore durante l'eliminazione di ${type}:`, error);
+    } finally {
+      setShowDeleteConfirm(false);
+      setItemToDelete(null);
     }
   };
 
   const cancelDelete = () => {
     setShowDeleteConfirm(false);
-    setEventToDelete(null);
+    setItemToDelete(null);
   };
 
   const handleRemoveTagFromEvent = async (eventId: string) => {
@@ -163,7 +219,7 @@ const App = () => {
           await updateDoc(eventRef, {
             taggedUsers: arrayRemove(currentUserProfileTag)
           });
-          console.log("Tag removed successfully!");
+          console.log("Tag rimosso con successo!");
         } else {
           console.warn("User is not tagged in this event.");
         }
@@ -266,8 +322,9 @@ const App = () => {
     setRelatedEventsForModal(relatedEvents);
     setModalActiveTab(activeTab);
     setInitialEventIndexForModal(relatedEvents.findIndex(e => e.id === event.id));
-    setShowEditSpotModal(false); // Assicurati che il modale di modifica sia chiuso
-    setShowAddSpotToKnotModal(false); // Assicurati che il modale aggiungi a knot sia chiuso
+    setShowEditSpotModal(false); // Assicurati che il modale di modifica spot sia chiuso
+    setShowAddSpotToKnot(false); // Assicurati che il modale aggiungi a knot sia chiuso
+    setShowEditKnotModal(false); // Assicurati che il modale di modifica knot sia chiuso
 
     if (isShareAction) {
       handleShareEvent(event);
@@ -281,7 +338,8 @@ const App = () => {
     setEventToEditInModal(event);
     setShowEditSpotModal(true);
     setShowEventDetailModal(false); // Assicurati che il modale di dettaglio sia chiuso
-    setShowAddSpotToKnotModal(false); // Assicurati che il modale aggiungi a knot sia chiuso
+    setShowAddSpotToKnot(false); // Assicurati che il modale aggiungi a knot sia chiuso
+    setShowEditKnotModal(false); // Assicurati che il modale di modifica knot sia chiuso
   };
 
   const handleEditSaveSuccess = () => {
@@ -293,14 +351,31 @@ const App = () => {
   // Funzione per mostrare il modale "Aggiungi a Knot"
   const handleAddSpotToKnot = (spot: EventType) => {
     setSpotToAddtoKnot(spot);
-    setShowAddSpotToKnotModal(true);
+    setShowAddSpotToKnot(true);
     setShowEventDetailModal(false); // Chiudi il modale di dettaglio se aperto
+    setShowEditSpotModal(false); // Assicurati che il modale di modifica spot sia chiuso
+    setShowEditKnotModal(false); // Assicurati che il modale di modifica knot sia chiuso
   };
 
   const handleAddSpotToKnotSuccess = () => {
-    setShowAddSpotToKnotModal(false); // Chiudi il modale dopo l'aggiunta
+    setShowAddSpotToKnot(false); // Chiudi il modale dopo l'aggiunta
     setSpotToAddtoKnot(null);
     // Potresti voler mostrare un messaggio di successo o aggiornare la UI
+  };
+
+  // Funzione per mostrare il modale di modifica del knot
+  const handleEditKnotInModal = (knot: KnotType) => {
+    setKnotToEditInModal(knot);
+    setShowEditKnotModal(true);
+    setShowEventDetailModal(false); // Assicurati che gli altri modali siano chiusi
+    setShowEditSpotModal(false);
+    setShowAddSpotToKnot(false);
+  };
+
+  const handleKnotEditSaveSuccess = () => {
+    setShowEditKnotModal(false);
+    // Potresti voler ricaricare i knot o navigare
+    // handleNavigate('myProfile');
   };
 
   if (loading) {
@@ -321,13 +396,13 @@ const App = () => {
             {/* CreateContentPage ora per la creazione di Spot e Knot */}
             {currentPage === 'createEvent' && <CreateContentPage onEventCreated={handleContentCreated} onCancelEdit={() => handleNavigate('myProfile')} />}
             {
-              currentPage === 'myProfile' && <UserProfileDisplay userIdToDisplay={userId || ''} onNavigate={handleNavigate} onEditEvent={handleEditEventInModal} onDeleteEvent={handleDeleteEvent} onRemoveTagFromEvent={handleRemoveTagFromEvent} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onAddSpotToKnot={handleAddSpotToKnot} />}
+              currentPage === 'myProfile' && <UserProfileDisplay userIdToDisplay={userId || ''} onNavigate={handleNavigate} onEditEvent={handleEditEventInModal} onDeleteEvent={async (eventId, isPublic) => handleDeleteItem(eventId, 'event', isPublic)} onRemoveTagFromEvent={handleRemoveTagFromEvent} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onAddSpotToKnot={handleAddSpotToKnot} onEditKnot={handleEditKnotInModal} onDeleteKnot={async (knotId, isPublic, creatorId) => handleDeleteItem(knotId, 'knot', isPublic, creatorId)} />}
             {currentPage === 'settings' && <SettingsPage onNavigate={handleNavigate} />}
 
             {/* SearchPage commentata come richiesto */}
             {/* {currentPage === 'search' && <SearchPage onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} />} */}
 
-            {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay userIdToDisplay={viewedUserId} onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onEditEvent={handleEditEventInModal} onDeleteEvent={async () => { }} onRemoveTagFromEvent={async () => { }} onAddSpotToKnot={handleAddSpotToKnot} />}
+            {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay userIdToDisplay={viewedUserId} onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onEditEvent={handleEditEventInModal} onDeleteEvent={async (eventId, isPublic) => handleDeleteItem(eventId, 'event', isPublic)} onRemoveTagFromEvent={async (eventId) => handleRemoveTagFromEvent(eventId)} onAddSpotToKnot={handleAddSpotToKnot} onEditKnot={handleEditKnotInModal} onDeleteKnot={async (knotId, isPublic, creatorId) => handleDeleteItem(knotId, 'knot', isPublic, creatorId)} />}
             {currentPage === 'notifications' && <NotificationsPage setUnreadNotificationsCount={setUnreadNotificationsCount} />}
           </main>
           {
@@ -359,8 +434,17 @@ const App = () => {
             showAddSpotToKnotModal && spotToAddtoKnot && (
               <AddSpotToKnotModal
                 spot={spotToAddtoKnot}
-                onClose={() => setShowAddSpotToKnotModal(false)}
+                onClose={() => setShowAddSpotToKnot(false)}
                 onAddSuccess={handleAddSpotToKnotSuccess}
+              />
+            )}
+          {
+            showEditKnotModal && knotToEditInModal && (
+              <EditKnotModal
+                key={knotToEditInModal.id}
+                knot={knotToEditInModal}
+                onClose={() => setShowEditKnotModal(false)}
+                onSaveSuccess={handleKnotEditSaveSuccess}
               />
             )}
           {
@@ -376,7 +460,7 @@ const App = () => {
 
           <ConfirmationModal
             show={showDeleteConfirm}
-            message="Sei sicuro di voler eliminare questo evento?"
+            message={`Sei sicuro di voler eliminare questo ${itemToDelete?.type === 'event' ? 'spot' : 'knot'}?`}
             onConfirm={confirmDelete}
             onCancel={cancelDelete}
           />

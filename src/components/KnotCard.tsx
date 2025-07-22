@@ -1,19 +1,55 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { KnotType } from '../interfaces';
 import UserAvatar from './UserAvatar';
 
 interface KnotCardProps {
   knot: KnotType;
-  // Aggiungi qui altre props se necessarie per interazioni (es. onShowKnotDetail, onEditKnot, onDeleteKnot)
+  onEditKnot: (knot: KnotType) => void;
+  onDeleteKnot: (knotId: string) => Promise<void>;
 }
 
-const KnotCard: React.FC<KnotCardProps> = ({ knot }) => {
+const KnotCard: React.FC<KnotCardProps> = ({ knot, onEditKnot, onDeleteKnot }) => {
+  const [showMenu, setShowMenu] = useState(false);
+
   const defaultCoverImage = knot.locationName ?
     `https://placehold.co/600x400/E0E0E0/888?text=${encodeURIComponent(knot.locationName.split(',')[0])}` :
     'https://placehold.co/600x400/E0E0E0/888?text=Nessuna+Immagine';
 
+  const toggleMenu = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowMenu(prev => !prev);
+  };
+
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden flex flex-col transition-transform duration-200 ease-in-out hover:scale-[1.01] hover:shadow-xl relative">
+      <div className="absolute top-4 right-4 z-10">
+        <button
+          onClick={toggleMenu}
+          className="p-2 rounded-full bg-white bg-opacity-75 hover:bg-opacity-100 focus:outline-none focus:ring-2 focus:ring-gray-300"
+          aria-label="Opzioni knot"
+        >
+          <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z"></path>
+          </svg>
+        </button>
+        {showMenu && (
+          <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg py-1 z-20">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEditKnot(knot); setShowMenu(false); }}
+              className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              Modifica
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDeleteKnot(knot.id); setShowMenu(false); }}
+              className="block w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-100"
+            >
+              Elimina
+            </button>
+          </div>
+        )}
+      </div>
+
       {knot.coverImage ? (
         <img
           src={knot.coverImage}
@@ -63,7 +99,6 @@ const KnotCard: React.FC<KnotCardProps> = ({ knot }) => {
           />
           <span className="text-sm font-semibold text-gray-800"> {knot.creatorUsername} </span>
         </div>
-        {/* Qui potresti aggiungere pulsanti di azione specifici per i Knot, come "Modifica Knot" o "Elimina Knot" */}
       </div>
     </div>
   );

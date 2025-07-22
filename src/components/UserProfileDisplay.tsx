@@ -1,288 +1,361 @@
 import React, { useState, useEffect } from 'react';
-import { doc, collection, query, where, orderBy, onSnapshot, updateDoc, arrayRemove, arrayUnion, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, getDoc, updateDoc, arrayUnion, arrayRemove, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
+import LoadingSpinner from './LoadingSpinner';
 import UserAvatar from './UserAvatar';
 import FollowButton from './FollowButton';
-import LoadingSpinner from './LoadingSpinner';
-import AlertMessage from './AlertMessage';
 import EventCard from './EventCard';
-import SpotCalendar from './SpotCalendar'; // Importa il nuovo componente del calendario
-import KnotCard from './KnotCard'; // Nuovo componente per visualizzare i Knot
-import { EventType, UserProfileData, UserProfile, EventData, KnotType, KnotData } from '../interfaces'; // Importa KnotType e KnotData
+import KnotCard from './KnotCard'; // Importa KnotCard
+import SpotCalendar from './SpotCalendar'; // Importa SpotCalendar
+import { EventType, UserProfile, KnotType } from '../interfaces';
 
-const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
+const appId = "tagknot-app";
 
-const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDeleteEvent, onRemoveTagFromEvent, onShowEventDetail, onLikeToggle, onAddSpotToKnot }: { userIdToDisplay: string; onNavigate: (page: string, id?: string | null) => void; onEditEvent: (event: EventType) => void; onDeleteEvent: (eventId: string, isPublic: boolean) => Promise<void>; onRemoveTagFromEvent: (eventId: string) => Promise<void>; onShowEventDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void; onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>; onAddSpotToKnot: (spot: EventType) => void; }) => {
-  const authContext = useAuth();
-  const currentUser = authContext?.currentUser;
-  const currentUserId = authContext?.userId;
-  const currentUserProfile = authContext?.userProfile;
+interface UserProfileDisplayProps {
+  userIdToDisplay: string;
+  onNavigate: (page: string, id?: string) => void;
+  onEditEvent: (event: EventType) => void;
+  onDeleteEvent: (eventId: string, isPublic: boolean) => Promise<void>;
+  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
+  onShowEventDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+  onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>;
+  onAddSpotToKnot: (spot: EventType) => void;
+  onEditKnot: (knot: KnotType) => void; // Nuova prop
+  onDeleteKnot: (knotId: string, isPublic: boolean, creatorId: string) => Promise<void>; // Nuova prop
+}
 
+const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
+  userIdToDisplay,
+  onNavigate,
+  onEditEvent,
+  onDeleteEvent,
+  onRemoveTagFromEvent,
+  onShowEventDetail,
+  onLikeToggle,
+  onAddSpotToKnot,
+  onEditKnot,
+  onDeleteKnot,
+}) => {
+  const { currentUser, userId, userProfile, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [myEvents, setMyEvents] = useState<EventType[]>([]);
-  const [myKnots, setMyKnots] = useState<KnotType[]>([]); // Nuovo stato per i Knot
-  const [activeTab, setActiveTab] = useState('myEvents');
+  const [userEvents, setUserEvents] = useState<EventType[]>([]);
+  const [userKnots, setUserKnots] = useState<KnotType[]>([]); // Stato per i Knot dell'utente
+  // const [taggedEvents, setTaggedEvents] = useState<EventType[]>([]); // Rimossa la gestione degli spot taggati
   const [loadingProfile, setLoadingProfile] = useState(true);
-  const [loadingMyEvents, setLoadingMyEvents] = useState(true);
-  const [loadingMyKnots, setLoadingMyKnots] = useState(true); // Nuovo stato per il caricamento dei Knot
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadingEvents, setLoadingEvents] = useState(true);
+  // const [loadingTaggedEvents, setLoadingTaggedEvents] = useState(true); // Rimossa la gestione degli spot taggati
+  const [loadingKnots, setLoadingKnots] = useState(true); // Stato di caricamento per i Knot
+  const [activeTab, setActiveTab] = useState('myEvents'); // 'myEvents', 'calendar', 'knots'
+
+  const isOwnProfile = userIdToDisplay === userId;
+  const isFollowing = isOwnProfile ? false : (userProfile?.following || []).includes(userIdToDisplay);
 
   useEffect(() => {
     let isMounted = true;
 
-    if (!userIdToDisplay) {
-      if (isMounted) {
-        setLoadingProfile(false);
-        setLoadingMyEvents(false);
-        setLoadingMyKnots(false);
-        setError("ID utente non fornito per la visualizzazione del profilo.");
-      }
-      return;
-    }
-
-    const userProfileRef = doc(db, `artifacts/${appId}/users/${userIdToDisplay}/profile/data`);
-    const unsubscribeProfile = onSnapshot(userProfileRef, (docSnap) => {
-      if (isMounted) {
-        if (docSnap.exists()) {
-          const fetchedProfile = { id: docSnap.id, ...(docSnap.data() as UserProfileData) };
-          setProfile(fetchedProfile);
-          if (currentUserProfile && currentUserProfile.following) {
-            setIsFollowing(currentUserProfile.following.includes(userIdToDisplay));
-          }
-        } else {
+    const fetchProfile = async () => {
+      if (!userIdToDisplay) return;
+      setLoadingProfile(true);
+      try {
+        const profileRef = doc(db, `artifacts/${appId}/users/${userIdToDisplay}/profile/data`);
+        const profileSnap = await getDoc(profileRef);
+        if (isMounted && profileSnap.exists()) {
+          // Corretto: non sovrascrivere 'id' se già presente nei dati
+          setProfile({ id: profileSnap.id, ...(profileSnap.data() as Omit<UserProfile, 'id'>) });
+        } else if (isMounted) {
           setProfile(null);
-          setError("Profilo utente non trovato.");
         }
-        setLoadingProfile(false);
+      } catch (error) {
+        if (isMounted) console.error("Error fetching profile:", error);
+      } finally {
+        if (isMounted) setLoadingProfile(false);
       }
-    }, (err) => {
+    };
+
+    fetchProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userIdToDisplay]);
+
+  useEffect(() => {
+    let isMounted = true; // Dichiarazione di isMounted all'interno di useEffect
+    if (!userIdToDisplay) return;
+
+    setLoadingEvents(true);
+    // setLoadingTaggedEvents(true); // Rimossa la gestione degli spot taggati
+    setLoadingKnots(true); // Imposta loading per i Knot
+
+    // Fetch user's own events (private)
+    const ownEventsQuery = query(
+      collection(db, `artifacts/${appId}/users/${userIdToDisplay}/events`),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubscribeOwnEvents = onSnapshot(ownEventsQuery, (snapshot) => {
       if (isMounted) {
-        console.error("Error fetching user profile:", err);
-        setError("Errore nel caricamento del profilo utente.");
-        setLoadingProfile(false);
+        const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as EventType));
+        setUserEvents(events);
+        setLoadingEvents(false);
+      }
+    }, (error) => {
+      if (isMounted) {
+        console.error("Error fetching user events:", error);
+        setLoadingEvents(false);
       }
     });
 
-    const isOwnProfileBeingViewed = currentUserId === userIdToDisplay;
-
-    // Fetch Events
-    let eventsQuery;
-    if (isOwnProfileBeingViewed) {
-      eventsQuery = query(
-        collection(db, `artifacts/${appId}/users/${userIdToDisplay}/events`),
-        orderBy('createdAt', 'desc')
-      );
-    } else {
-      eventsQuery = query(
-        collection(db, `artifacts/${appId}/public/data/events`),
-        where('creatorId', '==', userIdToDisplay),
-        where('isPublic', '==', true),
-        orderBy('createdAt', 'desc')
-      );
-    }
-
-    const unsubscribeEvents = onSnapshot(eventsQuery, (snapshot) => {
+    // Fetch user's knots (private)
+    const userKnotsQuery = query(
+      collection(db, `artifacts/${appId}/users/${userIdToDisplay}/knots`),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubscribeUserKnots = onSnapshot(userKnotsQuery, (snapshot) => {
       if (isMounted) {
-        const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventData) }) as EventType);
-        setMyEvents(fetchedEvents);
-        setLoadingMyEvents(false);
+        const knots = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as KnotType));
+        setUserKnots(knots);
+        setLoadingKnots(false);
       }
-    }, (err) => {
+    }, (error) => {
       if (isMounted) {
-        console.error("Error fetching user's events:", err);
-        setError("Errore nel caricamento degli eventi dell'utente.");
-        setLoadingMyEvents(false);
+        console.error("Error fetching user knots:", error);
+        setLoadingKnots(false);
       }
     });
 
-    // Fetch Knots
-    let knotsQuery;
-    if (isOwnProfileBeingViewed) {
-      knotsQuery = query(
-        collection(db, `artifacts/${appId}/users/${userIdToDisplay}/knots`),
-        orderBy('createdAt', 'desc')
-      );
-    } else {
-      knotsQuery = query(
-        collection(db, `artifacts/${appId}/public/data/knots`),
-        where('creatorId', '==', userIdToDisplay),
-        where('status', '==', 'public'), // Solo Knot pubblici per altri utenti
-        orderBy('createdAt', 'desc')
-      );
-    }
 
-    const unsubscribeKnots = onSnapshot(knotsQuery, (snapshot) => {
-      if (isMounted) {
-        const fetchedKnots = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as KnotData) }) as KnotType);
-        setMyKnots(fetchedKnots);
-        setLoadingMyKnots(false);
-      }
-    }, (err) => {
-      if (isMounted) {
-        console.error("Error fetching user's knots:", err);
-        setError("Errore nel caricamento dei knot dell'utente.");
-        setLoadingMyKnots(false);
-      }
-    });
+    // Rimossa la logica per gli spot taggati
+    // let unsubscribeTaggedEvents: () => void = () => {};
+    // if (profile?.profileTag) {
+    //   const taggedEventsQuery = query(
+    //     collection(db, `artifacts/${appId}/public/data/events`),
+    //     where('taggedUsers', 'array-contains', profile.profileTag),
+    //     orderBy('createdAt', 'desc')
+    //   );
+    //   unsubscribeTaggedEvents = onSnapshot(taggedEventsQuery, (snapshot) => {
+    //     if (isMounted) {
+    //       const events = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventType) }));
+    //       setTaggedEvents(events);
+    //       setLoadingTaggedEvents(false);
+    //     }
+    //   }, (error) => {
+    //     if (isMounted) {
+    //       console.error("Error fetching tagged events:", error);
+    //       setLoadingTaggedEvents(false);
+    //     }
+    //   });
+    // } else {
+    //   if (isMounted) setLoadingTaggedEvents(false); // No profile tag, no tagged events to fetch
+    // }
 
 
     return () => {
       isMounted = false;
-      unsubscribeProfile();
-      unsubscribeEvents();
-      unsubscribeKnots(); // Cleanup per i Knot
+      unsubscribeOwnEvents();
+      unsubscribeUserKnots();
+      // unsubscribeTaggedEvents(); // Rimossa la cleanup per gli spot taggati
     };
-  }, [userIdToDisplay, currentUser, currentUserId, currentUserProfile]);
+  }, [userIdToDisplay, profile?.profileTag]); // Dipendenza da profile.profileTag per le query taggate
 
   const handleFollowToggle = async () => {
-    if (!currentUser || !currentUserId || userIdToDisplay === currentUserId) return;
+    if (!currentUser || !userId || !userProfile || !profile) return;
 
-    const userProfileRef = doc(db, `artifacts/${appId}/users/${currentUserId}/profile/data`);
-    const targetProfileRef = doc(db, `artifacts/${appId}/users/${userIdToDisplay}/profile/data`);
+    const userProfileRef = doc(db, `artifacts/${appId}/users/${userId}/profile/data`);
+    const targetProfileRef = doc(db, `artifacts/${appId}/users/${profile.id}/profile/data`);
 
     try {
-      const batch = writeBatch(db);
       if (isFollowing) {
-        batch.update(userProfileRef, {
-          following: arrayRemove(userIdToDisplay)
-        });
-        batch.update(targetProfileRef, {
-          followers: arrayRemove(currentUserId)
-        });
+        // Unfollow
+        await updateDoc(userProfileRef, { following: arrayRemove(profile.id) });
+        await updateDoc(targetProfileRef, { followers: arrayRemove(userId) });
       } else {
-        batch.update(userProfileRef, {
-          following: arrayUnion(userIdToDisplay)
-        });
-        batch.update(targetProfileRef, {
-          followers: arrayUnion(currentUserId)
-        });
+        // Follow
+        await updateDoc(userProfileRef, { following: arrayUnion(profile.id) });
+        await updateDoc(targetProfileRef, { followers: arrayUnion(userId) });
       }
-      await batch.commit();
+      // Aggiorna lo stato locale del profilo per riflettere il cambiamento immediatamente
+      // isMounted è già nel closure di useEffect, quindi è accessibile
+      setProfile(prevProfile => {
+        if (!prevProfile) return null;
+        const newFollowers = isFollowing
+          ? prevProfile.followers.filter(id => id !== userId)
+          : [...prevProfile.followers, userId];
+        return { ...prevProfile, followers: newFollowers };
+      });
+
     } catch (error) {
-      console.error("Error toggling follow/unfollow:", error);
-      setError("Errore nel seguire/smettere di seguire.");
+      console.error("Error toggling follow:", error);
     }
   };
 
-  const isOwnProfile = currentUserId === userIdToDisplay;
-
-  if (loadingProfile || loadingMyEvents || loadingMyKnots) {
+  if (authLoading || loadingProfile) {
     return <LoadingSpinner message="Caricamento profilo..." />;
   }
 
-  if (error) {
-    return (
-      <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4 text-center">
-        <AlertMessage message={error} type="error" />
-      </div>
-    );
+  if (!profile) {
+    return <div className="text-center py-8 text-gray-700">Profilo non trovato.</div>;
   }
 
-  if (!profile) {
-    return (
-      <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4 text-center">
-        <h1 className="text-4xl font-extrabold text-center mb-8 text-gray-800"> Profilo Utente </h1>
-        <p className="text-gray-600">Profilo utente non trovato.</p>
-      </div>
-    );
-  }
+  // Modificato per non considerare taggedEvents
+  const displayedEvents = userEvents;
+  const loadingContent = activeTab === 'myEvents' ? loadingEvents : activeTab === 'knots' ? loadingKnots : false; // Aggiunto false per il calendario, che usa i propri dati
+  const noContentMessage = activeTab === 'myEvents' ? 'Nessun spot creato.' : activeTab === 'knots' ? 'Nessun knot creato.' : 'Nessun evento nel calendario.';
+
 
   return (
-    <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4">
-      <div className="max-w-4xl mx-auto bg-white p-8 rounded-2xl shadow-xl border border-gray-200">
-        <div className="flex flex-col items-center mb-8">
-          <UserAvatar
-            imageUrl={profile.profileImage}
-            username={profile.username}
-            size="xl"
-            className="mb-4 border-4 border-gray-500"
-          />
-          <h1 className="text-4xl font-extrabold text-gray-800 mb-2"> {profile.username} </h1>
-          <p className="text-gray-600 text-lg">@{profile.profileTag} </p>
-          <p className="text-gray-500 text-md"> {profile.email} </p>
-          <div className="flex space-x-6 mt-4">
-            <div className="text-center">
-              <p className="text-xl font-bold"> {profile.followers ? profile.followers.length : 0} </p>
-              <p className="text-gray-600 text-sm"> Follower </p>
+    <div className="pt-20 pb-16 md:pt-24 md:pb-8 bg-gray-100 min-h-screen">
+      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 mt-8">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
+          <UserAvatar imageUrl={profile.profileImage} username={profile.username} size="lg" />
+          <div className="text-center sm:text-left flex-grow">
+            <h2 className="text-3xl font-extrabold text-gray-800"> {profile.username} </h2>
+            <p className="text-gray-600 text-lg">@{profile.profileTag} </p>
+            <div className="flex justify-center sm:justify-start space-x-6 mt-3 text-gray-700">
+              <div className="text-center">
+                <span className="block font-bold text-xl"> {userEvents.length} </span>
+                <span className="text-sm">Spot</span>
+              </div>
+              <div className="text-center">
+                <span className="block font-bold text-xl"> {profile.followers.length} </span>
+                <span className="text-sm">Follower</span>
+              </div>
+              <div className="text-center">
+                <span className="block font-bold text-xl"> {profile.following.length} </span>
+                <span className="text-sm">Following</span>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-xl font-bold"> {profile.following ? profile.following.length : 0} </p>
-              <p className="text-gray-600 text-sm"> Seguiti </p>
-            </div>
+            {
+              !isOwnProfile && currentUser && (
+                <div className="mt-4">
+                  <FollowButton
+                    isFollowing={isFollowing}
+                    onToggle={handleFollowToggle}
+                  />
+                </div>
+              )
+            }
+            {
+              isOwnProfile && (
+                <div className="mt-4 flex justify-center sm:justify-start space-x-3">
+                  <button
+                    onClick={() => onNavigate('settings')}
+                    className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
+                  >
+                    Modifica Profilo
+                  </button>
+                  <button
+                    onClick={() => onNavigate('createEvent')}
+                    className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
+                  >
+                    Crea Spot/Knot
+                  </button>
+                </div>
+              )
+            }
           </div>
-          {!isOwnProfile && currentUser && (
-            <FollowButton
-              isFollowing={isFollowing}
-              onToggle={handleFollowToggle}
-            />
-          )}
         </div>
 
-        <div className="border-b border-gray-200 mb-6">
-          <div className="flex justify-center space-x-6">
+        <div className="border-b border-gray-200 mt-8 mb-6">
+          <nav className="-mb-px flex justify-center space-x-8" aria-label="Tabs">
             <button
               onClick={() => setActiveTab('myEvents')}
-              className={`py-3 px-6 text-lg font-semibold flex items-center space-x-2 ${activeTab === 'myEvents' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                activeTab === 'myEvents'
+                  ? 'border-gray-800 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-              <span>Spot Creati ({myEvents.length})</span>
+              I Miei Spot ({userEvents.length})
             </button>
+            {/* Rimossa la tab per gli spot taggati */}
+            {/*
+            {
+              isOwnProfile && (
+                <button
+                  onClick={() => setActiveTab('taggedEvents')}
+                  className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                    activeTab === 'taggedEvents'
+                      ? 'border-gray-800 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Spot Taggati ({taggedEvents.length})
+                </button>
+              )
+            }
+            */}
             <button
-              onClick={() => setActiveTab('myKnots')}
-              className={`py-3 px-6 text-lg font-semibold flex items-center space-x-2 ${activeTab === 'myKnots' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
+              onClick={() => setActiveTab('knots')}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                activeTab === 'knots'
+                  ? 'border-gray-800 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-              <span>Knot ({myKnots.length})</span>
+              I Miei Knot ({userKnots.length})
             </button>
             <button
               onClick={() => setActiveTab('calendar')}
-              className={`py-3 px-6 text-lg font-semibold flex items-center space-x-2 ${activeTab === 'calendar' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                activeTab === 'calendar'
+                  ? 'border-gray-800 text-gray-900'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-              <span>Calendario</span>
+              Calendario
             </button>
-          </div>
+          </nav>
         </div>
 
-        <div className="flex flex-col items-center gap-6">
-          {activeTab === 'myEvents' && (
-            myEvents.length === 0 ? (
-              <p className="text-center text-gray-600 col-span-full mt-10"> Nessuno Spot creato.</p>
-            ) : (
-              myEvents.map((event) => (
-                <div key={event.id} className="w-full">
-                  <EventCard
-                    event={event}
-                    currentUser={currentUser}
-                    onFollowToggle={async () => { }}
-                    followingUsers={[]}
-                    onEdit={onEditEvent}
-                    onDelete={onDeleteEvent}
-                    isProfileView={true}
-                    onLikeToggle={onLikeToggle}
-                    onShowEventDetail={(clickedEvent) => onShowEventDetail(clickedEvent, myEvents, 'myEvents')}
-                    onRemoveTag={onRemoveTagFromEvent}
-                    onAddSpotToKnot={onAddSpotToKnot} // Passa la prop
-                  />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {loadingContent ? (
+            <div className="col-span-full">
+              <LoadingSpinner message={`Caricamento ${activeTab === 'myEvents' ? 'spot' : activeTab === 'knots' ? 'knot' : 'calendario'}...`} />
+            </div>
+          ) : (
+            <>
+              {activeTab === 'knots' ? (
+                userKnots.length > 0 ? (
+                  userKnots.map((knot) => (
+                    <KnotCard
+                      key={knot.id}
+                      knot={knot}
+                      onEditKnot={onEditKnot}
+                      onDeleteKnot={(knotId) => onDeleteKnot(knotId, knot.status === 'public', knot.creatorId)} // Passa isPublic e creatorId
+                    />
+                  ))
+                ) : (
+                  <p className="col-span-full text-center text-gray-600"> {noContentMessage} </p>
+                )
+              ) : activeTab === 'calendar' ? (
+                // Passa tutti gli eventi dell'utente e i knot al calendario
+                <div className="col-span-full">
+                  <SpotCalendar spots={userEvents} knots={userKnots} onShowSpotDetail={onShowEventDetail} />
                 </div>
-              ))
-            )
-          )}
-          {activeTab === 'myKnots' && (
-            myKnots.length === 0 ? (
-              <p className="text-center text-gray-600 col-span-full mt-10"> Nessun Knot creato.</p>
-            ) : (
-              myKnots.map((knot) => (
-                <div key={knot.id} className="w-full">
-                  <KnotCard knot={knot} /> {/* Renderizza il nuovo KnotCard */}
-                </div>
-              ))
-            )
-          )}
-          {activeTab === 'calendar' && (
-            <SpotCalendar spots={myEvents} knots={myKnots} onShowSpotDetail={onShowEventDetail} />
+              ) : ( // activeTab === 'myEvents'
+                displayedEvents.length > 0 ? (
+                  displayedEvents.map((event) => (
+                    <EventCard
+                      key={event.id}
+                      event={event}
+                      currentUser={currentUser}
+                      onFollowToggle={handleFollowToggle}
+                      followingUsers={userProfile?.following || []}
+                      onEdit={() => onEditEvent(event)}
+                      onDelete={() => onDeleteEvent(event.id, event.isPublic)}
+                      isProfileView={true}
+                      onLikeToggle={onLikeToggle}
+                      onShowEventDetail={(e, r, t, s) => onShowEventDetail(e, r, t, s)}
+                      onRemoveTag={(eId) => onRemoveTagFromEvent(eId)}
+                      onAddSpotToKnot={onAddSpotToKnot}
+                    />
+                  ))
+                ) : (
+                  <p className="col-span-full text-center text-gray-600"> {noContentMessage} </p>
+                )
+              )}
+            </>
           )}
         </div>
       </div>
