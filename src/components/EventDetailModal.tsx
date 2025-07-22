@@ -3,23 +3,11 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverT
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
-import { EventType, CommentType, CommentData, NotificationData } from '../interfaces';
+import { EventType, EventData, CommentType, CommentData, NotificationData, EventDetailModalProps } from '../interfaces';
 
 const appId = "tagknot-app";
 
-interface EventDetailModalProps {
-  event: EventType;
-  onClose: () => void;
-  relatedEvents: EventType[];
-  initialIndex: number;
-  activeTab: string;
-  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
-  onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>;
-  onShareEvent: (event: EventType) => void;
-  onAddSpotToKnot: (spot: EventType) => void; // Nuova prop
-}
-
-const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, relatedEvents, initialIndex, activeTab, onRemoveTagFromEvent, onLikeToggle, onShareEvent, onAddSpotToKnot }) => {
+const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, relatedEvents, initialIndex, activeTab, onRemoveTagFromEvent, onLikeToggle, onShareEvent, onAddSpotToKnot, onUpdateEvent }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState<CommentType[]>([]);
@@ -29,9 +17,12 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
   const userId = authContext?.userId;
   const userProfile = authContext?.userProfile;
   const [showAllComments, setShowAllComments] = useState(false);
+  const [currentEvent, setCurrentEvent] = useState<EventType>(relatedEvents[initialIndex] || event); // Stato locale per l'evento corrente
 
-  // Assicurati che currentEvent sia sempre definito
-  const currentEvent = relatedEvents[currentIndex] || event;
+  // Aggiorna l'evento locale quando le props cambiano (es. navigazione tra eventi correlati)
+  useEffect(() => {
+    setCurrentEvent(relatedEvents[currentIndex] || event);
+  }, [currentIndex, relatedEvents, event]);
 
   const currentUserProfileTag = userProfile?.profileTag || (currentUser?.email ? currentUser.email.split('@')[0] : '');
   const isTaggedEvent = currentUser && (currentEvent?.taggedUsers || []).includes(currentUserProfileTag);
@@ -107,8 +98,16 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
           commentCount: increment(1)
         });
       }
-      
+
       await batch.commit();
+
+      // Dopo l'aggiornamento di Firestore, recupera l'evento aggiornato
+      const updatedEventSnap = await getDoc(publicEventRef);
+      if (updatedEventSnap.exists()) {
+        const updatedEventData = { id: updatedEventSnap.id, ...(updatedEventSnap.data() as EventData) };
+        setCurrentEvent(updatedEventData); // Aggiorna lo stato locale
+        onUpdateEvent(updatedEventData); // Notifica il componente padre
+      }
 
       if (currentEvent.creatorId !== userId) {
         const notificationData: NotificationData = {
@@ -174,7 +173,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
           )}
 
         <div className="p-6 flex-grow overflow-y-auto">
-          <h3 className="text-3xl font-bold text-gray-800 mb-3">{currentEvent.tag} </h3>
+          <h3 className="text-3xl font-bold text-gray-800 mb-3">{currentEvent.tag} </h3> {/* Rimosso '#' */}
           {currentEvent.description && <p className="text-gray-700 text-base mb-4"> {currentEvent.description} </p>}
           <div className="text-gray-600 text-sm space-y-2 mb-4">
             <p className="flex items-center">
@@ -193,6 +192,13 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
                 </p>
               )
             }
+            {/* NEW: Display Knot membership */}
+            {currentEvent.knotIds && currentEvent.knotIds.length > 0 && (
+              <p className="flex items-center text-sm text-gray-600">
+                <svg className="w-5 h-5 mr-2 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                Parte di Knot: {currentEvent.knotIds.join(', ')} {/* Mostrerà solo gli ID per ora */}
+              </p>
+            )}
             <p className="flex items-center">
               <svg className="w-5 h-5 mr-2 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"> </path></svg>
               Stato: {currentEvent.isPublic ? 'Pubblico' : 'Privato'}
@@ -205,7 +211,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
             <span className="text-sm"> {currentEvent.likes ? currentEvent.likes.length : 0} </span>
             </button>
             <button className="flex items-center space-x-1 text-gray-600">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.336-3.111A8.85 8.85 0 012 10c0-4.418 4.03-8 9-8s9 3.582 9 8zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd"></path></svg>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.336-3.111A8.85 8.85 0 012 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd"></path></svg>
               <span className="text-sm"> {comments.length} </span>
             </button>
             <button onClick={() => onShareEvent(currentEvent)} className="flex items-center space-x-1 text-gray-600 hover:text-gray-800 transition-colors">
@@ -214,7 +220,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
             </button>
             {isOwnEvent && (
               <button
-                onClick={() => onAddSpotToKnot(currentEvent)} // Aggiunto "Aggiungi a Knot"
+                onClick={() => onAddSpotToKnot(currentEvent)}
                 className="flex items-center space-x-1 text-gray-600 hover:text-blue-500 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>

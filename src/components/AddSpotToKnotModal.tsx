@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, orderBy } from 'firebase/firestore'; // Aggiunto orderBy
+import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, orderBy, getDoc } from 'firebase/firestore'; // Aggiunto getDoc
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
-import { EventType, KnotType } from '../interfaces';
+import { EventType, KnotType, EventData } from '../interfaces'; // Importa EventData
 
 const appId = "tagknot-app";
 
@@ -70,6 +70,9 @@ const AddSpotToKnotModal: React.FC<AddSpotToKnotModalProps> = ({ spot, onClose, 
       const knotRef = doc(db, `artifacts/${appId}/users/${userId}/knots`, selectedKnotId);
       const publicKnotRef = doc(db, `artifacts/${appId}/public/data/knots`, selectedKnotId);
 
+      const spotPrivateRef = doc(db, `artifacts/${appId}/users/${userId}/events`, spot.id);
+      const spotPublicRef = doc(db, `artifacts/${appId}/public/data/events`, spot.id);
+
       // Aggiungi l'ID dello spot all'array spotIds del Knot
       await updateDoc(knotRef, {
         spotIds: arrayUnion(spot.id)
@@ -80,6 +83,16 @@ const AddSpotToKnotModal: React.FC<AddSpotToKnotModalProps> = ({ spot, onClose, 
       if (selectedKnot && selectedKnot.status === 'public') {
         await updateDoc(publicKnotRef, {
           spotIds: arrayUnion(spot.id)
+        });
+      }
+
+      // NEW: Aggiungi l'ID del Knot all'array knotIds dello Spot
+      await updateDoc(spotPrivateRef, {
+        knotIds: arrayUnion(selectedKnotId)
+      });
+      if (spot.isPublic) {
+        await updateDoc(spotPublicRef, {
+          knotIds: arrayUnion(selectedKnotId)
         });
       }
 

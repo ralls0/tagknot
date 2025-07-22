@@ -3,7 +3,7 @@ import { doc, updateDoc, serverTimestamp, Timestamp, setDoc, writeBatch } from '
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import AlertMessage from './AlertMessage';
-import LoadingSpinner from './LoadingSpinner';
+import LoadingSpinner from './LoadingSpinner'; // Corretto il nome del file
 import { EventType, EventData } from '../interfaces';
 
 const appId = "tagknot-app";

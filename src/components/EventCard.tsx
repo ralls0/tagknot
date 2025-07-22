@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
-import { EventType } from '../interfaces';
+import React, { useState, useEffect } from 'react';
+import { EventType, KnotType } from '../interfaces';
 import UserAvatar from './UserAvatar';
 import FollowButton from './FollowButton';
 import { User } from 'firebase/auth';
+import { collection, query, where, getDocs } from 'firebase/firestore'; // Importa getDocs
+import { db } from '../firebaseConfig';
+
+const appId = "tagknot-app";
 
 interface EventCardProps {
   event: EventType;
@@ -35,10 +39,49 @@ const EventCard: React.FC<EventCardProps> = ({
   const isFollowingCreator = followingUsers.includes(event.creatorId);
   const isLiked = currentUser && event.likes?.includes(currentUser.uid);
   const [showMenu, setShowMenu] = useState(false); // Stato per il menu a tre puntini
+  const [knotNames, setKnotNames] = useState<string[]>([]); // Stato per i nomi dei Knot
 
   const defaultCoverImage = event.locationName ?
     `https://placehold.co/600x400/E0E0E0/888?text=${encodeURIComponent(event.locationName.split(',')[0])}` :
     'https://placehold.co/600x400/E0E0E0/888?text=Nessuna+Immagine';
+
+  useEffect(() => {
+    const fetchKnotNames = async () => {
+      if (event.knotIds && event.knotIds.length > 0) {
+        try {
+          // Query per i Knot pubblici
+          const publicKnotsQuery = query(
+            collection(db, `artifacts/${appId}/public/data/knots`),
+            where('__name__', 'in', event.knotIds)
+          );
+          const publicKnotsSnapshot = await getDocs(publicKnotsQuery);
+          const fetchedPublicKnots = publicKnotsSnapshot.docs.map(doc => doc.data().tag as string);
+
+          // Query per i Knot privati (se l'evento è dell'utente corrente)
+          let fetchedPrivateKnots: string[] = [];
+          if (isOwnEvent) {
+            const privateKnotsQuery = query(
+              collection(db, `artifacts/${appId}/users/${currentUser?.uid}/knots`),
+              where('__name__', 'in', event.knotIds)
+            );
+            const privateKnotsSnapshot = await getDocs(privateKnotsQuery);
+            fetchedPrivateKnots = privateKnotsSnapshot.docs.map(doc => doc.data().tag as string);
+          }
+
+          // Combina e rimuovi duplicati
+          const combinedKnotNames = Array.from(new Set([...fetchedPublicKnots, ...fetchedPrivateKnots]));
+          setKnotNames(combinedKnotNames);
+        } catch (error) {
+          console.error("Error fetching knot names for event:", error);
+        }
+      } else {
+        setKnotNames([]);
+      }
+    };
+
+    fetchKnotNames();
+  }, [event.knotIds, isOwnEvent, currentUser?.uid]);
+
 
   const handleCardClick = () => {
     onShowEventDetail(event, [event], 'myEvents');
@@ -105,7 +148,7 @@ const EventCard: React.FC<EventCardProps> = ({
         )}
 
         <div className="p-4">
-          <h3 className="text-xl font-bold text-gray-800 mb-2 truncate">{event.tag} </h3>
+          <h3 className="text-xl font-bold text-gray-800 mb-2 truncate">{event.tag} </h3> {/* Rimosso '#' */}
           {event.description && <p className="text-gray-700 text-sm mb-3 truncate"> {event.description} </p>}
           <div className="text-gray-600 text-xs space-y-1">
             <p className="flex items-center">
@@ -116,6 +159,13 @@ const EventCard: React.FC<EventCardProps> = ({
               <svg className="w-4 h-4 mr-1 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"> </path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path> </svg>
               <span className="truncate">{event.locationName || 'Nessuna posizione specificata'}</span>
             </p>
+            {/* NEW: Display Knot membership */}
+            {knotNames.length > 0 && (
+              <p className="flex items-center">
+                <svg className="w-4 h-4 mr-1 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                Parte di: {knotNames.map(name => `#${name}`).join(', ')}
+              </p>
+            )}
           </div>
         </div>
       </div> {/* Fine del div cliccabile */}

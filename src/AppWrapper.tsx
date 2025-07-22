@@ -181,6 +181,15 @@ const App = () => {
     setEventToRemoveTagFrom(null);
   };
 
+  // Callback per aggiornare l'evento selezionato nel modale dopo un'azione (es. commento, like)
+  const handleUpdateSelectedEvent = (updatedEvent: EventType) => {
+    setSelectedEventForModal(updatedEvent);
+    // Aggiorna anche l'evento correlato nell'array se presente
+    setRelatedEventsForModal(prevEvents =>
+      prevEvents.map(e => (e.id === updatedEvent.id ? updatedEvent : e))
+    );
+  };
+
   const handleLikeToggle = async (eventId: string, isLiked: boolean) => {
     if (!currentUser || !userId || !userProfile) return;
 
@@ -333,7 +342,8 @@ const App = () => {
                 onRemoveTagFromEvent={handleRemoveTagFromEvent}
                 onLikeToggle={handleLikeToggle}
                 onShareEvent={handleShareEvent}
-                onAddSpotToKnot={handleAddSpotToKnot} // Aggiunta la prop mancante qui
+                onAddSpotToKnot={handleAddSpotToKnot}
+                onUpdateEvent={handleUpdateSelectedEvent} // Passa la nuova callback
               />
             )}
           {

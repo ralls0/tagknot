@@ -31,6 +31,7 @@ export interface EventData {
   isPublic: boolean;
   likes: string[]; // Array of user UIDs who liked it
   commentCount: number;
+  knotIds: string[]; // NEW: Array of KnotType IDs this event belongs to
   createdAt: Timestamp;
 }
 
@@ -70,6 +71,19 @@ export interface AuthContextType {
   userId: string | null;
   userProfile: UserProfile | null;
   loading: boolean;
+}
+
+export interface EventDetailModalProps {
+  event: EventType;
+  onClose: () => void;
+  relatedEvents: EventType[];
+  initialIndex: number;
+  activeTab: string;
+  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
+  onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>;
+  onShareEvent: (event: EventType) => void;
+  onAddSpotToKnot: (spot: EventType) => void;
+  onUpdateEvent: (updatedEvent: EventType) => void; // Nuova prop
 }
 
 export interface LoadingSpinnerProps {
