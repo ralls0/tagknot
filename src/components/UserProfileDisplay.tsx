@@ -282,7 +282,7 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
             )
           )}
           {activeTab === 'calendar' && (
-            <SpotCalendar spots={myEvents} onShowSpotDetail={onShowEventDetail} />
+            <SpotCalendar spots={myEvents} knots={myKnots} onShowSpotDetail={onShowEventDetail} />
           )}
         </div>
       </div>

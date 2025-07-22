@@ -333,6 +333,7 @@ const App = () => {
                 onRemoveTagFromEvent={handleRemoveTagFromEvent}
                 onLikeToggle={handleLikeToggle}
                 onShareEvent={handleShareEvent}
+                onAddSpotToKnot={handleAddSpotToKnot} // Aggiunta la prop mancante qui
               />
             )}
           {

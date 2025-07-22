@@ -125,3 +125,11 @@ export interface AlertMessageProps {
   message: string;
   type: 'success' | 'error' | '';
 }
+
+// Aggiornata per includere i Knot
+export interface SpotCalendarProps {
+  spots: EventType[];
+  knots: KnotType[]; // Aggiunto per i Knot
+  onShowSpotDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+  onShowKnotDetail?: (knot: KnotType) => void; // Opzionale, se vuoi un modale di dettaglio per i Knot
+}

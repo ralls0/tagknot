@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, updateDoc, serverTimestamp, Timestamp, setDoc, writeBatch } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, Timestamp, setDoc, writeBatch } from 'firebase/firestore'; // Aggiunto writeBatch
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import AlertMessage from './AlertMessage';
@@ -84,7 +84,8 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
   useEffect(() => {
     let isMounted = true;
     const delayDebounceFn = setTimeout(async () => {
-      if (editLocationSearch.length > 2) {
+      // Mostra suggerimenti solo se la ricerca è attiva e nessuna location è stata selezionata in modo definitivo
+      if (editLocationSearch.length > 2 && (!editLocationName || editLocationSearch !== editLocationName)) {
         setLoadingLocationSuggestions(true);
         try {
           const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(editLocationSearch)}&addressdetails=1`);
@@ -126,13 +127,13 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
       isMounted = false;
       clearTimeout(delayDebounceFn);
     };
-  }, [editLocationSearch]);
+  }, [editLocationSearch, editLocationName]); // Aggiunto editLocationName come dipendenza
 
   const handleSelectLocation = (suggestion: { display_name: string; lat: string; lon: string }) => {
     setEditLocationSearch(suggestion.display_name);
     setEditLocationName(suggestion.display_name);
     setEditLocationCoords({ lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) });
-    setLocationSuggestions([]);
+    setLocationSuggestions([]); // Nasconde i suggerimenti dopo la selezione
     setSelectedLocationIndex(-1);
     setEditMessage('');
     setEditMessageType('');
@@ -165,15 +166,17 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
       return;
     }
     if (!editDate || !editTime) {
-      setEditMessage('Per favore, compila tutti i campi obbligatori (Data, Ora).');
+      setEditMessage('Per favor, compila tutti i campi obbligatori (Data, Ora).');
       setEditMessageType('error');
       return;
     }
-    if (!editLocationName || !editLocationCoords) {
-      setEditMessage('Per favore, seleziona una posizione valida dai suggerimenti.');
+    // La location è opzionale, ma se la ricerca è stata usata, deve esserci una selezione valida
+    if (editLocationSearch && (!editLocationName || !editLocationCoords)) {
+      setEditMessage('Per favore, seleziona una posizione valida dai suggerimenti o lascia il campo Ricerca Posizione vuoto.');
       setEditMessageType('error');
       return;
     }
+
 
     setIsSaving(true);
     setEditMessage('');
@@ -206,8 +209,8 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
         coverImage: finalCoverImageUrl,
         date: editDate,
         time: editTime,
-        locationName: editLocationName,
-        locationCoords: editLocationCoords,
+        locationName: editLocationName || undefined, // Imposta a undefined se vuoto
+        locationCoords: editLocationCoords || undefined, // Imposta a undefined se vuoto
         taggedUsers: editTaggedUsers.split(',').map(u => u.trim()).filter(u => u),
         isPublic: editIsPublic,
         // Questi campi non dovrebbero essere modificati tramite questo form
@@ -340,16 +343,23 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editLocationSearch"> Ricerca Posizione </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editLocationSearch"> Ricerca Posizione (Opzionale) </label>
               <input
                 type="text"
                 id="editLocationSearch"
                 value={editLocationSearch}
-                onChange={(e) => { setEditLocationSearch(e.target.value); setSelectedLocationIndex(-1); }}
+                onChange={(e) => {
+                  setEditLocationSearch(e.target.value);
+                  // Resetta editLocationName e editLocationCoords solo se l'input non corrisponde a una selezione precedente
+                  if (e.target.value !== editLocationName) {
+                    setEditLocationName('');
+                    setEditLocationCoords(null);
+                  }
+                  setSelectedLocationIndex(-1);
+                }}
                 onKeyDown={handleKeyDownOnLocationSearch}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
                 placeholder="Cerca città, indirizzo..."
-                required
               />
               {
                 loadingLocationSuggestions && (
@@ -359,22 +369,21 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
                   </div>
                 )
               }
-              {
-                locationSuggestions.length > 0 && (
-                  <ul className="bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                    {
-                      locationSuggestions.map((suggestion, index) => (
-                        <li
-                          key={`${suggestion.lat}-${suggestion.lon}-${index}`}
-                          className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${index === selectedLocationIndex ? 'bg-gray-100' : ''}`}
-                          onClick={() => handleSelectLocation(suggestion)}
-                        >
-                          {suggestion.display_name}
-                        </li>
-                      ))}
-                  </ul>
-                )
-              }
+              {/* Nasconde i suggerimenti se c'è un match esatto e locationCoords è impostato */}
+              {locationSuggestions.length > 0 && !(editLocationSearch === editLocationName && editLocationCoords) && (
+                <ul className="bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
+                  {
+                    locationSuggestions.map((suggestion, index) => (
+                      <li
+                        key={`${suggestion.lat}-${suggestion.lon}-${index}`}
+                        className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${index === selectedLocationIndex ? 'bg-gray-100' : ''}`}
+                        onClick={() => handleSelectLocation(suggestion)}
+                      >
+                        {suggestion.display_name}
+                      </li>
+                    ))}
+                </ul>
+              )}
               {
                 editLocationName && (
                   <p className="text-sm text-gray-600 mt-2"> Posizione selezionata: <span className="font-semibold"> {editLocationName} </span></p>
@@ -399,7 +408,7 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
                 type="checkbox"
                 id="editIsPublic"
                 checked={editIsPublic}
-                onChange={(e) => setEditIsPublic(e.target.checked)}
+                onChange={(e) => setEditIsPublic(e.target.checked)} // Corretto da setIsPublic
                 className="h-5 w-5 text-gray-700 rounded border-gray-300 focus:ring-gray-500"
               />
               <label htmlFor="editIsPublic" className="ml-2 block text-sm text-gray-700">

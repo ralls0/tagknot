@@ -85,7 +85,8 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
   useEffect(() => {
     let isMounted = true;
     const delayDebounceFn = setTimeout(async () => {
-      if (locationSearch.length > 2) {
+      // Mostra suggerimenti solo se la ricerca è attiva e nessuna location è stata selezionata in modo definitivo
+      if (locationSearch.length > 2 && (!locationName || locationSearch !== locationName)) {
         setLoadingLocationSuggestions(true);
         try {
           const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&addressdetails=1`);
@@ -127,7 +128,7 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
       isMounted = false;
       clearTimeout(delayDebounceFn);
     };
-  }, [locationSearch]);
+  }, [locationSearch, locationName]); // Aggiunto locationName come dipendenza
 
   const handleSelectLocation = (suggestion: { display_name: string; lat: string; lon: string }) => {
     setLocationSearch(suggestion.display_name);
@@ -186,8 +187,9 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
       }
     }
 
+    // La location è opzionale, ma se la ricerca è stata usata, deve esserci una selezione valida
     if (locationSearch && (!locationName || !locationCoords)) {
-      setMessage('Per favore, seleziona una posizione valida dai suggerimenti o lascia il campo vuoto.');
+      setMessage('Per favore, seleziona una posizione valida dai suggerimenti o lascia il campo Ricerca Posizione vuoto.');
       setMessageType('error');
       return;
     }
@@ -458,7 +460,15 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
               type="text"
               id="locationSearch"
               value={locationSearch}
-              onChange={(e) => { setLocationSearch(e.target.value); setLocationName(''); setLocationCoords(null); setSelectedLocationIndex(-1); }}
+              onChange={(e) => {
+                setLocationSearch(e.target.value);
+                // Resetta locationName e locationCoords solo se l'input non corrisponde a una selezione precedente
+                if (e.target.value !== locationName) {
+                  setLocationName('');
+                  setLocationCoords(null);
+                }
+                setSelectedLocationIndex(-1);
+              }}
               onKeyDown={handleKeyDownOnLocationSearch}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
               placeholder="Cerca città, indirizzo..."
@@ -469,7 +479,8 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
                 Caricamento suggerimenti...
               </div>
             )}
-            {locationSuggestions.length > 0 && (
+            {/* Nasconde i suggerimenti se c'è un match esatto e locationCoords è impostato */}
+            {locationSuggestions.length > 0 && !(locationSearch === locationName && locationCoords) && (
               <ul className="bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
                 {locationSuggestions.map((suggestion, index) => (
                   <li
