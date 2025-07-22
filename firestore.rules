@@ -22,12 +22,9 @@ service cloud.firestore {
     // Questi eventi sono accessibili a tutti gli utenti autenticati per la lettura (feed, ricerca).
     // La creazione, l'aggiornamento e l'eliminazione sono consentite solo al creatore dell'evento.
     match /artifacts/{appId}/public/data/events/{eventId} {
-      allow read: if request.auth != null; // Qualsiasi utente autenticato può leggere
-
-      // Permessi per creazione, aggiornamento ed eliminazione dell'evento:
-      // Solo il creatore dell'evento può eseguire queste operazioni.
+      allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
 
       // Permessi specifici per aggiornamenti che non siano creazione/eliminazione completa dell'evento,
       // ma modifiche a campi come 'likes' o 'taggedUsers' o 'knotIds'.
@@ -35,7 +32,7 @@ service cloud.firestore {
         // L'utente è il creatore dell'evento (copre tutte le modifiche)
         resource.data.creatorId == request.auth.uid ||
 
-        // L'utente sta aggiungendo o rimuovendo il proprio like
+        // Qualsiasi utente autenticato può aggiungere o rimuovere il proprio like
         (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
           request.resource.data.likes is list &&
@@ -46,15 +43,19 @@ service cloud.firestore {
           )
         ) ||
 
-        // L'utente sta rimuovendo il proprio tag dall'evento
+        // Qualsiasi utente autenticato può rimuovere il proprio tag dall'evento.
+        // Questa regola è permissiva e permette la rimozione di un elemento dall'array taggedUsers.
+        // Per una sicurezza più stringente che permetta la rimozione SOLO del proprio tag,
+        // sarebbe necessario che `profileTag` fosse una custom claim nel token di autenticazione
+        // o una lettura aggiuntiva del profilo utente nelle regole, il che le renderebbe più complesse.
         (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['taggedUsers']) &&
           request.resource.data.taggedUsers is list &&
           resource.data.taggedUsers is list &&
-          resource.data.taggedUsers.hasAny([request.auth.token.profileTag]) && // Richiede che il tag dell'utente sia presente prima
-          !(request.resource.data.taggedUsers.hasAny([request.auth.token.profileTag])) // E non sia presente dopo (rimozione)
+          request.resource.data.taggedUsers.size() < resource.data.taggedUsers.size() // Permette solo rimozioni
         ) ||
-        // L'utente sta modificando l'array knotIds (aggiungendo/rimuovendo un knotId)
+
+        // Qualsiasi utente autenticato può aggiungere/rimuovere knotIds (per aggiungere spot a knot)
         (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['knotIds']) &&
           request.resource.data.knotIds is list &&
@@ -73,11 +74,14 @@ service cloud.firestore {
     match /artifacts/{appId}/public/data/knots/{knotId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
 
       // Permessi specifici per aggiornamenti all'array spotIds (aggiunta/rimozione di spotId)
       allow update: if request.auth != null && (
-        resource.data.creatorId == request.auth.uid || // Il creatore può fare qualsiasi update
+        // Il creatore può fare qualsiasi update
+        resource.data.creatorId == request.auth.uid ||
+        
+        // Qualsiasi utente autenticato può aggiungere/rimuovere spotIds (per aggiungere spot a knot)
         (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['spotIds']) &&
           request.resource.data.spotIds is list &&
@@ -101,9 +105,12 @@ service cloud.firestore {
     }
 
     // Regole per la sub-collezione 'notifications' sotto ogni utente.
-    // Solo il proprietario delle notifiche può leggerle o marcarle come lette.
+    // Solo il proprietario delle notifiche può leggerle.
+    // Qualsiasi utente autenticato può creare una notifica per un altro utente.
     match /artifacts/{appId}/users/{userId}/notifications/{notificationId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null; // Permette a qualsiasi utente autenticato di creare una notifica
+      allow update, delete: if false; // Le notifiche non possono essere modificate o eliminate dopo la creazione
     }
 
     // Permette la lettura della collezione 'profile' per le Collection Group Queries
@@ -119,6 +126,7 @@ service cloud.firestore {
     }
   }
 }
+
 
 // rules_version = '2';
 // service cloud.firestore {

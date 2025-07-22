@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch, increment } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, getDoc, writeBatch, increment, Timestamp } from 'firebase/firestore'; // Aggiunto Timestamp
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
-import { EventType, EventData, CommentType, CommentData, NotificationData, EventDetailModalProps } from '../interfaces';
+import { EventType, CommentType, NotificationData, EventDetailModalProps, CommentData, EventData } from '../interfaces'; // Aggiunto CommentData, EventData
 
 const appId = "tagknot-app";
 
@@ -43,7 +43,8 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
 
     const unsubscribeComments = onSnapshot(q, (snapshot) => {
       if (isMounted) {
-        const fetchedComments = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as CommentData) }));
+        // Correggi la tipizzazione qui: doc.data() restituisce CommentData, non CommentType
+        const fetchedComments = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as CommentData) } as CommentType));
         setComments(fetchedComments);
         setLoadingComments(false);
       }
@@ -70,7 +71,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
 
   const handleAddCommentSubmit = async () => {
     if (!commentText.trim() || !currentUser || !userId || !userProfile || !currentEvent) {
-      console.warn("Cannot add comment: missing text, user, or event info.");
+      console.warn("Impossibile aggiungere commento: testo, utente o informazioni sull'evento mancanti.");
       return;
     }
 
@@ -88,10 +89,14 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
         createdAt: serverTimestamp(),
       } as CommentData);
 
-      batch.update(publicEventRef, {
-        commentCount: increment(1)
-      });
+      // Aggiorna il contatore dei commenti solo se l'evento è pubblico o se è un evento privato dell'utente corrente
+      if (currentEvent.isPublic) {
+        batch.update(publicEventRef, {
+          commentCount: increment(1)
+        });
+      }
 
+      // Aggiorna il contatore dei commenti per la copia privata dell'evento, se esiste
       const privateEventDocSnap = await getDoc(privateEventRef);
       if (privateEventDocSnap.exists()) {
         batch.update(privateEventRef, {
@@ -99,12 +104,14 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
         });
       }
 
+
       await batch.commit();
 
       // Dopo l'aggiornamento di Firestore, recupera l'evento aggiornato
-      const updatedEventSnap = await getDoc(publicEventRef);
+      const updatedEventSnap = await getDoc(currentEvent.isPublic ? publicEventRef : privateEventRef);
       if (updatedEventSnap.exists()) {
-        const updatedEventData = { id: updatedEventSnap.id, ...(updatedEventSnap.data() as EventData) };
+        // Correggi la tipizzazione qui: doc.data() restituisce EventData, non EventType
+        const updatedEventData = { id: updatedEventSnap.id, ...(updatedEventSnap.data() as EventData) } as EventType;
         setCurrentEvent(updatedEventData); // Aggiorna lo stato locale
         onUpdateEvent(updatedEventData); // Notifica il componente padre
       }
@@ -117,7 +124,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
           eventId: currentEvent.id,
           eventTag: currentEvent.tag,
           message: `${userProfile.username} ha commentato il tuo evento: ${currentEvent.tag}`,
-          createdAt: serverTimestamp() as any,
+          createdAt: serverTimestamp() as Timestamp, // Timestamp è ora importato
           read: false,
           imageUrl: currentEvent.coverImage || '',
         };
@@ -125,7 +132,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
       }
       setCommentText('');
     } catch (error) {
-      console.error("Error adding comment:", error);
+      console.error("Errore durante l'aggiunta del commento:", error);
     }
   };
 
@@ -173,7 +180,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
           )}
 
         <div className="p-6 flex-grow overflow-y-auto">
-          <h3 className="text-3xl font-bold text-gray-800 mb-3">{currentEvent.tag} </h3> {/* Rimosso '#' */}
+          <h3 className="text-3xl font-bold text-gray-800 mb-3">{currentEvent.tag} </h3>
           {currentEvent.description && <p className="text-gray-700 text-base mb-4"> {currentEvent.description} </p>}
           <div className="text-gray-600 text-sm space-y-2 mb-4">
             <p className="flex items-center">
@@ -192,11 +199,10 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
                 </p>
               )
             }
-            {/* NEW: Display Knot membership */}
             {currentEvent.knotIds && currentEvent.knotIds.length > 0 && (
               <p className="flex items-center text-sm text-gray-600">
                 <svg className="w-5 h-5 mr-2 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                Parte di Knot: {currentEvent.knotIds.join(', ')} {/* Mostrerà solo gli ID per ora */}
+                Parte di Knot: {currentEvent.knotIds.join(', ')}
               </p>
             )}
             <p className="flex items-center">
@@ -206,7 +212,7 @@ const EventDetailModal: React.FC<EventDetailModalProps> = ({ event, onClose, rel
           </div>
 
           <div className="flex items-center justify-around border-t border-b border-gray-200 py-3 mb-4">
-            <button onClick={() => onLikeToggle(currentEvent.id, isLiked || false)} className="flex items-center space-x-1 text-gray-600 hover:text-red-500 transition-colors">
+            <button onClick={() => onLikeToggle(currentEvent.id, isLiked || false, currentEvent.isPublic, currentEvent.creatorId)} className="flex items-center space-x-1 text-gray-600 hover:text-red-500 transition-colors">
               <svg className={`w-5 h-5 ${isLiked ? 'text-red-500' : ''}`} fill={isLiked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"> </path></svg>
             <span className="text-sm"> {currentEvent.likes ? currentEvent.likes.length : 0} </span>
             </button>

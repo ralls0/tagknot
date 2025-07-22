@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
-import { EventData, KnotData } from '../interfaces'; // Importa KnotData
+import { EventData, KnotData } from '../interfaces';
 
 const appId = "tagknot-app";
 
@@ -38,9 +38,9 @@ const resizeAndConvertToBase64 = (file: File, maxWidth: number, maxHeight: numbe
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
+          resolve(canvas.toDataURL('image/jpeg', 0.8)); // Comprimi a JPEG con qualità 0.8
         } else {
-          reject(new Error("Impossibile ottenere il contesto del canvas."));
+          reject(new Error("Could not get 2D context for canvas"));
         }
       };
       img.onerror = (error) => reject(error);
@@ -55,141 +55,92 @@ interface CreateContentPageProps {
 }
 
 const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, onCancelEdit }) => {
-  const { currentUser, userId, userProfile } = useAuth();
+  const { userId, userProfile } = useAuth();
+  const [contentType, setContentType] = useState<'spot' | 'knot'>('spot'); // 'spot' or 'knot'
 
-  const [contentType, setContentType] = useState<'spot' | 'knot'>('spot'); // Nuovo stato per il tipo di contenuto
+  // Spot specific states
   const [tag, setTag] = useState('');
   const [description, setDescription] = useState('');
-  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
-  const [coverImageLink, setCoverImageLink] = useState('');
-  const [date, setDate] = useState(''); // Per Spot
-  const [time, setTime] = useState(''); // Per Spot
-  const [startDate, setStartDate] = useState(''); // Per Knot
-  const [endDate, setEndDate] = useState(''); // Per Knot
-  const [locationSearch, setLocationSearch] = useState('');
+  const [coverImage, setCoverImage] = useState<File | null>(null);
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
   const [locationName, setLocationName] = useState('');
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [taggedUsers, setTaggedUsers] = useState('');
-  const [isPublic, setIsPublic] = useState(true);
-  const [knotStatus, setKnotStatus] = useState<'public' | 'private' | 'internal'>('public'); // Per Knot
+  const [taggedUsersInput, setTaggedUsersInput] = useState('');
+  const [isPublic, setIsPublic] = useState(true); // Default to public
 
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
+  // Knot specific states
+  const [knotTag, setKnotTag] = useState('');
+  const [knotDescription, setKnotDescription] = useState('');
+  const [knotCoverImage, setKnotCoverImage] = useState<File | null>(null);
+  const [knotLocationName, setKnotLocationName] = useState('');
+  const [knotLocationCoords, setKnotLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [knotStartDate, setKnotStartDate] = useState('');
+  const [knotEndDate, setKnotEndDate] = useState('');
+  const [knotStatus, setKnotStatus] = useState<'public' | 'private' | 'internal'>('public'); // Default to public
+
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [locationSuggestions, setLocationSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
-  const [selectedLocationIndex, setSelectedLocationIndex] = useState(-1);
-  const [loadingLocationSuggestions, setLoadingLocationSuggestions] = useState(false);
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
 
-  // Logica per i suggerimenti di posizione
-  useEffect(() => {
-    let isMounted = true;
-    const delayDebounceFn = setTimeout(async () => {
-      // Mostra suggerimenti solo se la ricerca è attiva e nessuna location è stata selezionata in modo definitivo
-      if (locationSearch.length > 2 && (!locationName || locationSearch !== locationName)) {
-        setLoadingLocationSuggestions(true);
-        try {
-          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationSearch)}&addressdetails=1`);
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const data = await response.json();
-          if (isMounted) {
-            if (data && data.length > 0) {
-              setLocationSuggestions(data.map((p: any) => ({
-                display_name: p.display_name,
-                lat: p.lat,
-                lon: p.lon
-              })));
-            } else {
-              setLocationSuggestions([]);
-            }
-          }
-        } catch (error) {
-          if (isMounted) {
-            console.error("Error fetching place suggestions from Nominatim:", error);
-            setMessage('Errore nel recupero dei suggerimenti di posizione.');
-            setMessageType('error');
-            setLocationSuggestions([]);
-          }
-        } finally {
-          if (isMounted) {
-            setLoadingLocationSuggestions(false);
-          }
-        }
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      if (contentType === 'spot') {
+        setCoverImage(e.target.files[0]);
       } else {
-        if (isMounted) {
-          setLocationSuggestions([]);
-        }
+        setKnotCoverImage(e.target.files[0]);
       }
-    }, 500);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(delayDebounceFn);
-    };
-  }, [locationSearch, locationName]); // Aggiunto locationName come dipendenza
-
-  const handleSelectLocation = (suggestion: { display_name: string; lat: string; lon: string }) => {
-    setLocationSearch(suggestion.display_name);
-    setLocationName(suggestion.display_name);
-    setLocationCoords({ lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) });
-    setLocationSuggestions([]); // Nasconde i suggerimenti dopo la selezione
-    setSelectedLocationIndex(-1);
-    setMessage('');
-    setMessageType('');
-  };
-
-  const handleKeyDownOnLocationSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedLocationIndex((prev: number) => Math.min(prev + 1, locationSuggestions.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedLocationIndex((prev: number) => Math.max(prev - 1, 0));
-    } else if (e.key === 'Enter' && selectedLocationIndex !== -1) {
-      e.preventDefault();
-      handleSelectLocation(locationSuggestions[selectedLocationIndex]);
     }
   };
+
+  const handleLocationSearch = async () => {
+    if (!locationName.trim()) return;
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationName)}&format=json&limit=1`);
+      const data = await response.json();
+      if (data && data.length > 0) {
+        setLocationCoords({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+        setMessage('Posizione trovata!');
+        setMessageType('success');
+      } else {
+        setLocationCoords(null);
+        setMessage('Posizione non trovata. Inserisci manualmente o riprova.');
+        setMessageType('error');
+      }
+    } catch (error) {
+      console.error("Error fetching location:", error);
+      setMessage('Errore durante la ricerca della posizione.');
+      setMessageType('error');
+    }
+  };
+
+  const handleKnotLocationSearch = async () => {
+    if (!knotLocationName.trim()) return;
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(knotLocationName)}&format=json&limit=1`);
+      const data = await response.json();
+      if (data && data.length > 0) {
+        setKnotLocationCoords({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+        setMessage('Posizione trovata per il Knot!');
+        setMessageType('success');
+      } else {
+        setKnotLocationCoords(null);
+        setMessage('Posizione non trovata per il Knot. Inserisci manualmente o riprova.');
+        setMessageType('error');
+      }
+    } catch (error) {
+      console.error("Error fetching knot location:", error);
+      setMessage('Errore durante la ricerca della posizione del Knot.');
+      setMessageType('error');
+    }
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!currentUser || !userId || !userProfile) {
-      setMessage('Errore: Utente non autenticato o profilo non disponibile.');
-      setMessageType('error');
-      return;
-    }
-
-    if (!tag.trim()) {
-      setMessage(`Il Tag (Titolo ${contentType === 'spot' ? 'Spot' : 'Knot'}) è obbligatorio.`);
-      setMessageType('error');
-      return;
-    }
-
-    if (contentType === 'spot') {
-      if (!date || !time) {
-        setMessage('Per favore, compila tutti i campi obbligatori (Data, Ora) per lo Spot.');
-        setMessageType('error');
-        return;
-      }
-    } else { // contentType === 'knot'
-      if (!startDate || !endDate) {
-        setMessage('Per favore, compila tutti i campi obbligatori (Data Inizio, Data Fine) per il Knot.');
-        setMessageType('error');
-        return;
-      }
-      if (new Date(startDate) > new Date(endDate)) {
-        setMessage('La Data di Inizio del Knot non può essere successiva alla Data di Fine.');
-        setMessageType('error');
-        return;
-      }
-    }
-
-    // La location è opzionale, ma se la ricerca è stata usata, deve esserci una selezione valida
-    if (locationSearch && (!locationName || !locationCoords)) {
-      setMessage('Per favore, seleziona una posizione valida dai suggerimenti o lascia il campo Ricerca Posizione vuoto.');
+    if (!userId || !userProfile) {
+      setMessage('Utente non autenticato. Impossibile creare contenuto.');
       setMessageType('error');
       return;
     }
@@ -197,373 +148,385 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
     setIsSaving(true);
     setMessage('');
     setMessageType('');
-
     let finalCoverImage = '';
-    if (coverImageLink) {
-      finalCoverImage = coverImageLink;
-    } else if (coverImageFile) {
-      setIsUploadingImage(true);
-      try {
-        finalCoverImage = await resizeAndConvertToBase64(coverImageFile, 800, 600);
-      } catch (uploadError) {
-        console.error("Error uploading image:", uploadError);
-        setMessage('Errore nel caricamento dell\'immagine. Riprova.');
-        setMessageType('error');
-        setIsSaving(false);
-        setIsUploadingImage(false);
-        return;
-      } finally {
-        setIsUploadingImage(false);
-      }
-    }
 
     try {
       if (contentType === 'spot') {
-        const newEvent: EventData = {
+        if (!tag || !date || !time || !locationName) {
+          setMessage('Per favore, compila tutti i campi obbligatori per lo Spot.');
+          setMessageType('error');
+          setIsSaving(false);
+          return;
+        }
+
+        if (coverImage) {
+          setIsUploadingImage(true);
+          finalCoverImage = await resizeAndConvertToBase64(coverImage, 800, 600);
+          setIsUploadingImage(false);
+        }
+
+        const parsedTaggedUsers = taggedUsersInput.split(',').map(t => t.trim()).filter(t => t);
+
+        // Genera un ID per il documento prima di salvarlo
+        const newEventRef = doc(collection(db, `artifacts/${appId}/users/${userId}/events`));
+        const eventId = newEventRef.id;
+
+        const newEventData: EventData = {
           type: 'event',
           creatorId: userId,
           creatorUsername: userProfile.username,
           creatorProfileImage: userProfile.profileImage,
-          tag: tag, // Rimosso l'aggiunta automatica di '#'
+          tag,
           description,
           coverImage: finalCoverImage,
           date,
           time,
           locationName,
           locationCoords,
-          taggedUsers: taggedUsers.split(',').map(u => u.trim()).filter(u => u),
+          taggedUsers: parsedTaggedUsers,
           isPublic,
           likes: [],
           commentCount: 0,
-          knotIds: [], // Inizialmente vuoto
+          knotIds: [],
           createdAt: serverTimestamp() as Timestamp,
         };
 
-        await addDoc(collection(db, `artifacts/${appId}/users/${userId}/events`), newEvent);
+        // Salva sempre nella collezione privata dell'utente
+        await setDoc(newEventRef, newEventData);
+
+        // Se pubblico, salva anche nella collezione pubblica con lo stesso ID
         if (isPublic) {
-          await addDoc(collection(db, `artifacts/${appId}/public/data/events`), newEvent);
+          await setDoc(doc(db, `artifacts/${appId}/public/data/events`, eventId), newEventData);
         }
+
         setMessage('Spot creato con successo!');
         setMessageType('success');
+        onEventCreated(); // Notifica il componente padre
       } else { // contentType === 'knot'
-        const newKnot: KnotData = {
+        if (!knotTag || !knotStartDate || !knotEndDate) {
+          setMessage('Per favore, compila tutti i campi obbligatori per il Knot.');
+          setMessageType('error');
+          setIsSaving(false);
+          return;
+        }
+
+        if (new Date(knotStartDate) > new Date(knotEndDate)) {
+          setMessage('La data di inizio del Knot non può essere successiva alla data di fine.');
+          setMessageType('error');
+          setIsSaving(false);
+          return;
+        }
+
+        if (knotCoverImage) {
+          setIsUploadingImage(true);
+          finalCoverImage = await resizeAndConvertToBase64(knotCoverImage, 800, 600);
+          setIsUploadingImage(false);
+        }
+
+        // Genera un ID per il documento prima di salvarlo
+        const newKnotRef = doc(collection(db, `artifacts/${appId}/users/${userId}/knots`));
+        const knotId = newKnotRef.id;
+
+        const newKnotData: KnotData = {
           type: 'knot',
           creatorId: userId,
           creatorUsername: userProfile.username,
           creatorProfileImage: userProfile.profileImage,
-          tag: tag, // Rimosso l'aggiunta automatica di '#'
-          description,
+          tag: knotTag,
+          description: knotDescription,
           coverImage: finalCoverImage,
-          locationName: locationName || undefined,
-          locationCoords: locationCoords || undefined,
-          startDate,
-          endDate,
-          spotIds: [], // Inizialmente vuoto, gli spot verranno aggiunti dopo
+          locationName: knotLocationName,
+          locationCoords: knotLocationCoords,
+          startDate: knotStartDate,
+          endDate: knotEndDate,
+          spotIds: [], // Knot starts with no spots
           status: knotStatus,
           createdAt: serverTimestamp() as Timestamp,
         };
 
-        await addDoc(collection(db, `artifacts/${appId}/users/${userId}/knots`), newKnot);
+        // Salva sempre nella collezione privata dell'utente
+        await setDoc(newKnotRef, newKnotData);
+
+        // Se pubblico, salva anche nella collezione pubblica con lo stesso ID
         if (knotStatus === 'public') {
-          await addDoc(collection(db, `artifacts/${appId}/public/data/knots`), newKnot);
+          await setDoc(doc(db, `artifacts/${appId}/public/data/knots`, knotId), newKnotData);
         }
+
         setMessage('Knot creato con successo!');
         setMessageType('success');
+        onEventCreated(); // Notifica il componente padre (potrebbe essere rinominato in onContentCreated)
       }
-
-      // Reset form fields
-      setTag('');
-      setDescription('');
-      setCoverImageFile(null);
-      setCoverImageLink('');
-      setDate('');
-      setTime('');
-      setStartDate('');
-      setEndDate('');
-      setLocationSearch('');
-      setLocationName('');
-      setLocationCoords(null);
-      setTaggedUsers('');
-      setIsPublic(true);
-      setKnotStatus('public');
-
-      onEventCreated(); // Trigger navigation or other actions after creation
     } catch (error) {
-      console.error(`Error creating ${contentType}:`, error);
-      setMessage(`Errore durante la creazione dello ${contentType}: ` + (error as Error).message);
+      console.error("Error creating content:", error);
+      setMessage(`Errore durante la creazione del ${contentType === 'spot' ? 'Spot' : 'Knot'}. Riprova.`);
       setMessageType('error');
     } finally {
       setIsSaving(false);
+      setIsUploadingImage(false);
     }
   };
 
   return (
-    <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4">
-      <div className="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-xl border border-gray-200">
-        <h1 className="text-4xl font-extrabold text-center mb-8 text-gray-800">
-          Crea Nuovo {contentType === 'spot' ? 'Spot' : 'Knot'}
-        </h1>
-        <AlertMessage message={message} type={messageType} />
+    <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8 pt-20">
+      <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div className="p-6 sm:p-8">
+          <h2 className="text-3xl font-extrabold text-gray-800 text-center mb-6">
+            Crea Nuovo {contentType === 'spot' ? 'Spot' : 'Knot'}
+          </h2>
+          <AlertMessage message={message} type={messageType} />
 
-        <div className="mb-6 flex justify-center space-x-4">
-          <button
-            type="button"
-            onClick={() => setContentType('spot')}
-            className={`px-6 py-2 rounded-full font-semibold transition-all duration-200 ${
-              contentType === 'spot' ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Crea Spot
-          </button>
-          <button
-            type="button"
-            onClick={() => setContentType('knot')}
-            className={`px-6 py-2 rounded-full font-semibold transition-all duration-200 ${
-              contentType === 'knot' ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Crea Knot
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="tag">
-              Tag (Titolo {contentType === 'spot' ? 'Spot' : 'Knot'})
-            </label>
-            <input
-              type="text"
-              id="tag"
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-              placeholder={contentType === 'spot' ? 'NomeSpot' : 'NomeKnot'}
-              required
-            />
+          <div className="mb-6 flex justify-center space-x-4">
+            <button
+              onClick={() => setContentType('spot')}
+              className={`px-6 py-3 rounded-full font-semibold text-lg transition-all duration-300 ease-in-out ${
+                contentType === 'spot' ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Spot
+            </button>
+            <button
+              onClick={() => setContentType('knot')}
+              className={`px-6 py-3 rounded-full font-semibold text-lg transition-all duration-300 ease-in-out ${
+                contentType === 'knot' ? 'bg-gray-800 text-white shadow-md' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Knot
+            </button>
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="description">
-              Descrizione
-            </label>
-            <textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-              placeholder={`Descrivi il tuo ${contentType === 'spot' ? 'spot' : 'knot'}...`}
-            ></textarea>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="coverImageLink">
-              URL Immagine di Copertina (Opzionale)
-            </label>
-            <input
-              type="text"
-              id="coverImageLink"
-              value={coverImageLink}
-              onChange={(e) => { setCoverImageLink(e.target.value); setCoverImageFile(null); }}
-              className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
-              placeholder="Incolla l'URL di un'immagine"
-            />
-            <p className="text-center text-gray-500 my-2">-- OPPURE --</p>
-            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="coverImageFile">
-              Carica Immagine di Copertina (Opzionale)
-            </label>
-            <input
-              type="file"
-              id="coverImageFile"
-              accept="image/*"
-              onChange={(e) => { setCoverImageFile(e.target.files ? e.target.files[0] : null); setCoverImageLink(''); }}
-              className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
-            />
-            {isUploadingImage && (
-              <div className="flex items-center justify-center mt-4 text-gray-600">
-                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-500 mr-3"></div>
-                Caricamento immagine...
-              </div>
-            )}
-            {coverImageFile && (
-              <div className="mt-4">
-                <p className="text-sm text-gray-600 mb-2">Anteprima:</p>
-                <img src={URL.createObjectURL(coverImageFile)} alt="Anteprima copertina" className="w-32 h-32 object-cover rounded-lg border border-gray-300" />
-              </div>
-            )}
-          </div>
-
-          {contentType === 'spot' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="date">
-                  Data Spot
-                </label>
-                <input
-                  type="date"
-                  id="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="time">
-                  Ora Spot
-                </label>
-                <input
-                  type="time"
-                  id="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  required
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="startDate">
-                  Data Inizio Knot
-                </label>
-                <input
-                  type="date"
-                  id="startDate"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="endDate">
-                  Data Fine Knot
-                </label>
-                <input
-                  type="date"
-                  id="endDate"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  required
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="locationSearch">
-              Ricerca Posizione (Opzionale)
-            </label>
-            <input
-              type="text"
-              id="locationSearch"
-              value={locationSearch}
-              onChange={(e) => {
-                setLocationSearch(e.target.value);
-                // Resetta locationName e locationCoords solo se l'input non corrisponde a una selezione precedente
-                if (e.target.value !== locationName) {
-                  setLocationName('');
-                  setLocationCoords(null);
-                }
-                setSelectedLocationIndex(-1);
-              }}
-              onKeyDown={handleKeyDownOnLocationSearch}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-              placeholder="Cerca città, indirizzo..."
-            />
-            {loadingLocationSuggestions && (
-              <div className="flex items-center justify-center mt-2 text-gray-600">
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-500 mr-2"></div>
-                Caricamento suggerimenti...
-              </div>
-            )}
-            {/* Nasconde i suggerimenti se c'è un match esatto e locationCoords è impostato */}
-            {locationSuggestions.length > 0 && !(locationSearch === locationName && locationCoords) && (
-              <ul className="bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                {locationSuggestions.map((suggestion, index) => (
-                  <li
-                    key={`${suggestion.lat}-${suggestion.lon}-${index}`}
-                    className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${index === selectedLocationIndex ? 'bg-gray-100' : ''}`}
-                    onClick={() => handleSelectLocation(suggestion)}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {contentType === 'spot' ? (
+              <>
+                <div>
+                  <label htmlFor="tag" className="block text-sm font-medium text-gray-700 mb-1">Tag Spot (es. #PartyNight)</label>
+                  <input
+                    type="text"
+                    id="tag"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    value={tag}
+                    onChange={(e) => setTag(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">Descrizione</label>
+                  <textarea
+                    id="description"
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  ></textarea>
+                </div>
+                <div>
+                  <label htmlFor="coverImage" className="block text-sm font-medium text-gray-700 mb-1">Immagine di Copertina</label>
+                  <input
+                    type="file"
+                    id="coverImage"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                  />
+                  {isUploadingImage && (
+                    <div className="flex items-center justify-center mt-2 text-gray-600">
+                      <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-500 mr-3"></div>
+                      Caricamento immagine...
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+                    <input
+                      type="date"
+                      id="date"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="time" className="block text-sm font-medium text-gray-700 mb-1">Ora</label>
+                    <input
+                      type="time"
+                      id="time"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      value={time}
+                      onChange={(e) => setTime(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">Posizione</label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      id="location"
+                      className="flex-grow px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      value={locationName}
+                      onChange={(e) => setLocationName(e.target.value)}
+                      placeholder="Es. Roma, Colosseo"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLocationSearch}
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
+                    >
+                      Cerca
+                    </button>
+                  </div>
+                  {locationCoords && (
+                    <p className="text-sm text-gray-500 mt-1">Coordinate: {locationCoords.lat}, {locationCoords.lng}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="taggedUsers" className="block text-sm font-medium text-gray-700 mb-1">Tagga Utenti (separati da virgola, usa il tag profilo)</label>
+                  <input
+                    type="text"
+                    id="taggedUsers"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    value={taggedUsersInput}
+                    onChange={(e) => setTaggedUsersInput(e.target.value)}
+                    placeholder="username1, username2 (usa il tag profilo)"
+                  />
+                </div>
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="isPublic"
+                    checked={isPublic}
+                    onChange={(e) => setIsPublic(e.target.checked)}
+                    className="h-5 w-5 text-gray-700 rounded border-gray-300 focus:ring-gray-500 bg-gray-50"
+                  />
+                  <label htmlFor="isPublic" className="ml-2 block text-sm text-gray-700">
+                    Rendi lo Spot pubblico (visibile nel feed degli utenti che ti seguono)
+                  </label>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label htmlFor="knotTag" className="block text-sm font-medium text-gray-700 mb-1">Nome Knot (es. #ViaggioEstate2024)</label>
+                  <input
+                    type="text"
+                    id="knotTag"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    value={knotTag}
+                    onChange={(e) => setKnotTag(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="knotDescription" className="block text-sm font-medium text-gray-700 mb-1">Descrizione Knot</label>
+                  <textarea
+                    id="knotDescription"
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    value={knotDescription}
+                    onChange={(e) => setKnotDescription(e.target.value)}
+                  ></textarea>
+                </div>
+                <div>
+                  <label htmlFor="knotCoverImage" className="block text-sm font-medium text-gray-700 mb-1">Immagine di Copertina Knot</label>
+                  <input
+                    type="file"
+                    id="knotCoverImage"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                  />
+                  {isUploadingImage && (
+                    <div className="flex items-center justify-center mt-2 text-gray-600">
+                      <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-500 mr-3"></div>
+                      Caricamento immagine...
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="knotLocation" className="block text-sm font-medium text-gray-700 mb-1">Posizione Principale Knot (Opzionale)</label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      id="knotLocation"
+                      className="flex-grow px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      value={knotLocationName}
+                      onChange={(e) => setKnotLocationName(e.target.value)}
+                      placeholder="Es. Alpi Italiane"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleKnotLocationSearch}
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
+                    >
+                      Cerca
+                    </button>
+                  </div>
+                  {knotLocationCoords && (
+                    <p className="text-sm text-gray-500 mt-1">Coordinate: {knotLocationCoords.lat}, {knotLocationCoords.lng}</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="knotStartDate" className="block text-sm font-medium text-gray-700 mb-1">Data Inizio</label>
+                    <input
+                      type="date"
+                      id="knotStartDate"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      value={knotStartDate}
+                      onChange={(e) => setKnotStartDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="knotEndDate" className="block text-sm font-medium text-gray-700 mb-1">Data Fine</label>
+                    <input
+                      type="date"
+                      id="knotEndDate"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      value={knotEndDate}
+                      onChange={(e) => setKnotEndDate(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="knotStatus" className="block text-sm font-medium text-gray-700 mb-1">Stato Knot</label>
+                  <select
+                    id="knotStatus"
+                    value={knotStatus}
+                    onChange={(e) => setKnotStatus(e.target.value as 'public' | 'private' | 'internal')}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
                   >
-                    {suggestion.display_name}
-                  </li>
-                ))}
-              </ul>
+                    <option value="public">Pubblico (visibile a tutti)</option>
+                    <option value="private">Privato (visibile solo a te)</option>
+                    <option value="internal">Interno (visibile a gruppi specifici - funzionalità futura)</option>
+                  </select>
+                </div>
+              </>
             )}
-            {locationName && (
-              <p className="text-sm text-gray-600 mt-2">Posizione selezionata: <span className="font-semibold">{locationName}</span></p>
-            )}
-          </div>
 
-          {contentType === 'spot' && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="taggedUsers">
-                Tagga Utenti (separati da virgola)
-              </label>
-              <input
-                type="text"
-                id="taggedUsers"
-                value={taggedUsers}
-                onChange={(e) => setTaggedUsers(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                placeholder="username1, username2 (usa il tag profilo)"
-              />
-            </div>
-          )}
-
-          {contentType === 'spot' ? (
-            <div className="flex items-center mb-4">
-              <input
-                type="checkbox"
-                id="isPublic"
-                checked={isPublic}
-                onChange={(e) => setIsPublic(e.target.checked)}
-                className="h-5 w-5 text-gray-700 rounded border-gray-300 focus:ring-gray-500"
-              />
-              <label htmlFor="isPublic" className="ml-2 block text-sm text-gray-700">
-                Rendi lo Spot pubblico
-              </label>
-            </div>
-          ) : (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="knotStatus">
-                Stato del Knot
-              </label>
-              <select
-                id="knotStatus"
-                value={knotStatus}
-                onChange={(e) => setKnotStatus(e.target.value as 'public' | 'private' | 'internal')}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+            <div className="flex justify-end space-x-4 mt-6">
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
+                disabled={isSaving}
               >
-                <option value="public">Pubblico (visibile a tutti)</option>
-                <option value="private">Privato (visibile solo a te)</option>
-                <option value="internal">Interno (visibile a gruppi specifici - funzionalità futura)</option>
-              </select>
+                Annulla
+              </button>
+              <button
+                type="submit"
+                className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
+                disabled={isSaving || isUploadingImage}
+              >
+                {isSaving ? `Creazione ${contentType === 'spot' ? 'Spot' : 'Knot'}...` : `Crea ${contentType === 'spot' ? 'Spot' : 'Knot'}`}
+              </button>
             </div>
-          )}
-
-          <div className="flex justify-end space-x-4 mt-6">
-            <button
-              type="button"
-              onClick={onCancelEdit}
-              className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
-              disabled={isSaving}
-            >
-              Annulla
-            </button>
-            <button
-              type="submit"
-              className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
-              disabled={isSaving || isUploadingImage}
-            >
-              {isSaving ? `Creazione ${contentType === 'spot' ? 'Spot' : 'Knot'}...` : `Crea ${contentType === 'spot' ? 'Spot' : 'Knot'}`}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

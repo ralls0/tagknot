@@ -177,20 +177,13 @@ const SpotCalendar: React.FC<SpotCalendarProps> = ({ spots, knots, onShowSpotDet
                 <div
                   key={item.id}
                   className="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-md border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-                  onClick={() => onShowSpotDetail(item as EventType)} // Cast to EventType for onShowSpotDetail
+                  onClick={() => onShowSpotDetail(item)} // Passa l'intero item
                 >
                   <div className="flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-lg overflow-hidden">
-                    {item.type === 'event' && (item as EventType).coverImage ? (
+                    {item.coverImage ? (
                       <img
-                        src={(item as EventType).coverImage}
-                        alt={(item as EventType).tag}
-                        className="w-full h-full object-cover"
-                        onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.onerror = null; e.currentTarget.src = defaultImage; }}
-                      />
-                    ) : item.type === 'knot' && (item as KnotType).coverImage ? (
-                      <img
-                        src={(item as KnotType).coverImage}
-                        alt={(item as KnotType).tag}
+                        src={item.coverImage}
+                        alt={item.tag}
                         className="w-full h-full object-cover"
                         onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.onerror = null; e.currentTarget.src = defaultImage; }}
                       />

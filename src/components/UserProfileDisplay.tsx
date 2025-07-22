@@ -6,8 +6,8 @@ import LoadingSpinner from './LoadingSpinner';
 import UserAvatar from './UserAvatar';
 import FollowButton from './FollowButton';
 import EventCard from './EventCard';
-import KnotCard from './KnotCard'; // Importa KnotCard
-import SpotCalendar from './SpotCalendar'; // Importa SpotCalendar
+import KnotCard from './KnotCard';
+import SpotCalendar from './SpotCalendar';
 import { EventType, UserProfile, KnotType } from '../interfaces';
 
 const appId = "tagknot-app";
@@ -18,11 +18,12 @@ interface UserProfileDisplayProps {
   onEditEvent: (event: EventType) => void;
   onDeleteEvent: (eventId: string, isPublic: boolean) => Promise<void>;
   onRemoveTagFromEvent: (eventId: string) => Promise<void>;
-  onShowEventDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
-  onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>;
+  onShowEventDetail: (item: EventType | KnotType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+  onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
   onAddSpotToKnot: (spot: EventType) => void;
-  onEditKnot: (knot: KnotType) => void; // Nuova prop
-  onDeleteKnot: (knotId: string, isPublic: boolean, creatorId: string) => Promise<void>; // Nuova prop
+  onEditKnot: (knot: KnotType) => void;
+  onDeleteKnot: (knotId: string, isPublic: boolean, creatorId: string) => Promise<void>;
+  onShowKnotDetail: (knot: KnotType) => void; // Nuova prop
 }
 
 const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
@@ -36,16 +37,15 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
   onAddSpotToKnot,
   onEditKnot,
   onDeleteKnot,
+  onShowKnotDetail, // Destruttura la nuova prop
 }) => {
   const { currentUser, userId, userProfile, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [userEvents, setUserEvents] = useState<EventType[]>([]);
-  const [userKnots, setUserKnots] = useState<KnotType[]>([]); // Stato per i Knot dell'utente
-  // const [taggedEvents, setTaggedEvents] = useState<EventType[]>([]); // Rimossa la gestione degli spot taggati
+  const [userKnots, setUserKnots] = useState<KnotType[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
-  // const [loadingTaggedEvents, setLoadingTaggedEvents] = useState(true); // Rimossa la gestione degli spot taggati
-  const [loadingKnots, setLoadingKnots] = useState(true); // Stato di caricamento per i Knot
+  const [loadingKnots, setLoadingKnots] = useState(true);
   const [activeTab, setActiveTab] = useState('myEvents'); // 'myEvents', 'calendar', 'knots'
 
   const isOwnProfile = userIdToDisplay === userId;
@@ -61,7 +61,6 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
         const profileRef = doc(db, `artifacts/${appId}/users/${userIdToDisplay}/profile/data`);
         const profileSnap = await getDoc(profileRef);
         if (isMounted && profileSnap.exists()) {
-          // Corretto: non sovrascrivere 'id' se già presente nei dati
           setProfile({ id: profileSnap.id, ...(profileSnap.data() as Omit<UserProfile, 'id'>) });
         } else if (isMounted) {
           setProfile(null);
@@ -81,12 +80,11 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
   }, [userIdToDisplay]);
 
   useEffect(() => {
-    let isMounted = true; // Dichiarazione di isMounted all'interno di useEffect
+    let isMounted = true;
     if (!userIdToDisplay) return;
 
     setLoadingEvents(true);
-    // setLoadingTaggedEvents(true); // Rimossa la gestione degli spot taggati
-    setLoadingKnots(true); // Imposta loading per i Knot
+    setLoadingKnots(true);
 
     // Fetch user's own events (private)
     const ownEventsQuery = query(
@@ -124,39 +122,12 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
       }
     });
 
-
-    // Rimossa la logica per gli spot taggati
-    // let unsubscribeTaggedEvents: () => void = () => {};
-    // if (profile?.profileTag) {
-    //   const taggedEventsQuery = query(
-    //     collection(db, `artifacts/${appId}/public/data/events`),
-    //     where('taggedUsers', 'array-contains', profile.profileTag),
-    //     orderBy('createdAt', 'desc')
-    //   );
-    //   unsubscribeTaggedEvents = onSnapshot(taggedEventsQuery, (snapshot) => {
-    //     if (isMounted) {
-    //       const events = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventType) }));
-    //       setTaggedEvents(events);
-    //       setLoadingTaggedEvents(false);
-    //     }
-    //   }, (error) => {
-    //     if (isMounted) {
-    //       console.error("Error fetching tagged events:", error);
-    //       setLoadingTaggedEvents(false);
-    //     }
-    //   });
-    // } else {
-    //   if (isMounted) setLoadingTaggedEvents(false); // No profile tag, no tagged events to fetch
-    // }
-
-
     return () => {
       isMounted = false;
       unsubscribeOwnEvents();
       unsubscribeUserKnots();
-      // unsubscribeTaggedEvents(); // Rimossa la cleanup per gli spot taggati
     };
-  }, [userIdToDisplay, profile?.profileTag]); // Dipendenza da profile.profileTag per le query taggate
+  }, [userIdToDisplay, profile?.profileTag]);
 
   const handleFollowToggle = async () => {
     if (!currentUser || !userId || !userProfile || !profile) return;
@@ -175,7 +146,6 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
         await updateDoc(targetProfileRef, { followers: arrayUnion(userId) });
       }
       // Aggiorna lo stato locale del profilo per riflettere il cambiamento immediatamente
-      // isMounted è già nel closure di useEffect, quindi è accessibile
       setProfile(prevProfile => {
         if (!prevProfile) return null;
         const newFollowers = isFollowing
@@ -197,9 +167,8 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
     return <div className="text-center py-8 text-gray-700">Profilo non trovato.</div>;
   }
 
-  // Modificato per non considerare taggedEvents
   const displayedEvents = userEvents;
-  const loadingContent = activeTab === 'myEvents' ? loadingEvents : activeTab === 'knots' ? loadingKnots : false; // Aggiunto false per il calendario, che usa i propri dati
+  const loadingContent = activeTab === 'myEvents' ? loadingEvents : activeTab === 'knots' ? loadingKnots : false;
   const noContentMessage = activeTab === 'myEvents' ? 'Nessun spot creato.' : activeTab === 'knots' ? 'Nessun knot creato.' : 'Nessun evento nel calendario.';
 
 
@@ -268,23 +237,6 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
             >
               I Miei Spot ({userEvents.length})
             </button>
-            {/* Rimossa la tab per gli spot taggati */}
-            {/*
-            {
-              isOwnProfile && (
-                <button
-                  onClick={() => setActiveTab('taggedEvents')}
-                  className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
-                    activeTab === 'taggedEvents'
-                      ? 'border-gray-800 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  Spot Taggati ({taggedEvents.length})
-                </button>
-              )
-            }
-            */}
             <button
               onClick={() => setActiveTab('knots')}
               className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
@@ -322,14 +274,14 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
                       key={knot.id}
                       knot={knot}
                       onEditKnot={onEditKnot}
-                      onDeleteKnot={(knotId) => onDeleteKnot(knotId, knot.status === 'public', knot.creatorId)} // Passa isPublic e creatorId
+                      onDeleteKnot={(knotId) => onDeleteKnot(knotId, knot.status === 'public', knot.creatorId)}
+                      onShowKnotDetail={onShowKnotDetail} // Passa la prop
                     />
                   ))
                 ) : (
                   <p className="col-span-full text-center text-gray-600"> {noContentMessage} </p>
                 )
               ) : activeTab === 'calendar' ? (
-                // Passa tutti gli eventi dell'utente e i knot al calendario
                 <div className="col-span-full">
                   <SpotCalendar spots={userEvents} knots={userKnots} onShowSpotDetail={onShowEventDetail} />
                 </div>
@@ -345,7 +297,7 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
                       onEdit={() => onEditEvent(event)}
                       onDelete={() => onDeleteEvent(event.id, event.isPublic)}
                       isProfileView={true}
-                      onLikeToggle={onLikeToggle}
+                      onLikeToggle={(eventId, isLiked) => onLikeToggle(eventId, isLiked, event.isPublic, event.creatorId)}
                       onShowEventDetail={(e, r, t, s) => onShowEventDetail(e, r, t, s)}
                       onRemoveTag={(eId) => onRemoveTagFromEvent(eId)}
                       onAddSpotToKnot={onAddSpotToKnot}

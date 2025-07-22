@@ -80,10 +80,10 @@ export interface EventDetailModalProps {
   initialIndex: number;
   activeTab: string;
   onRemoveTagFromEvent: (eventId: string) => Promise<void>;
-  onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>;
+  onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
   onShareEvent: (event: EventType) => void;
   onAddSpotToKnot: (spot: EventType) => void;
-  onUpdateEvent: (updatedEvent: EventType) => void; // Nuova prop
+  onUpdateEvent: (updatedEvent: EventType) => void;
 }
 
 export interface LoadingSpinnerProps {
@@ -100,17 +100,13 @@ export interface UserAvatarProps {
   username: string | undefined | null;
   size?: 'sm' | 'md' | 'lg' | 'xl'; // Define sizes for flexibility
   className?: string;
+  onClick?: () => void; // Aggiunto onClick come prop opzionale
 }
 
 export interface FollowButtonProps {
   isFollowing: boolean;
   onToggle: () => void;
   disabled?: boolean;
-}
-
-export interface SpotCalendarProps {
-  spots: EventType[];
-  onShowSpotDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
 }
 
 // NEW: Knot Interfaces
@@ -135,15 +131,19 @@ export interface KnotType extends KnotData {
   id: string; // Document ID from Firestore
 }
 
-export interface AlertMessageProps {
-  message: string;
-  type: 'success' | 'error' | '';
-}
-
-// Aggiornata per includere i Knot
 export interface SpotCalendarProps {
   spots: EventType[];
   knots: KnotType[]; // Aggiunto per i Knot
-  onShowSpotDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
-  onShowKnotDetail?: (knot: KnotType) => void; // Opzionale, se vuoi un modale di dettaglio per i Knot
+  onShowSpotDetail: (item: EventType | KnotType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+}
+
+// NEW: KnotDetailModal Props
+export interface KnotDetailModalProps {
+  knot: KnotType;
+  onClose: () => void;
+  onShowEventDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+  onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
+  onShareEvent: (event: EventType) => void;
+  onAddSpotToKnot: (spot: EventType) => void;
+  onEditEvent: (event: EventType) => void; // Permette di modificare uno spot dal KnotDetailModal
 }
