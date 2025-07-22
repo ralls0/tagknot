@@ -50,6 +50,17 @@ const KnotCard: React.FC<KnotCardProps> = ({ knot, onEditKnot, onDeleteKnot }) =
         )}
       </div>
 
+      <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <UserAvatar
+            imageUrl={knot.creatorProfileImage}
+            username={knot.creatorUsername}
+            size="sm"
+          />
+          <span className="text-sm font-semibold text-gray-800"> {knot.creatorUsername} </span>
+        </div>
+      </div>
+
       {knot.coverImage ? (
         <img
           src={knot.coverImage}
@@ -90,7 +101,7 @@ const KnotCard: React.FC<KnotCardProps> = ({ knot, onEditKnot, onDeleteKnot }) =
         </div>
       </div>
 
-      <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+      {/* <div className="p-4 border-t border-gray-200 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <UserAvatar
             imageUrl={knot.creatorProfileImage}
@@ -99,7 +110,7 @@ const KnotCard: React.FC<KnotCardProps> = ({ knot, onEditKnot, onDeleteKnot }) =
           />
           <span className="text-sm font-semibold text-gray-800"> {knot.creatorUsername} </span>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 };
