@@ -6,14 +6,14 @@ import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, 
 import { auth, db } from './firebaseConfig';
 
 // Import shared interfaces
-import { EventType, UserProfile, NotificationType, EventData, UserProfileData, CommentData, NotificationData } from './interfaces';
+import { EventType, UserProfile, NotificationType, EventData, UserProfileData, CommentData, NotificationData, KnotType } from './interfaces'; // Importa KnotType
 
 // Import components
 import { AuthProvider, useAuth } from './components/AuthContext';
 import LoginPage from './components/LoginPage';
 import Navbar from './components/Navbar';
 // import HomePage from './components/HomePage'; // Commentato come richiesto
-import CreateSpotPage from './components/CreateSpotPage'; // Rinominato da CreateEventPage
+import CreateContentPage from './components/CreateContentPage'; // Rinominato da CreateSpotPage
 import UserProfileDisplay from './components/UserProfileDisplay';
 import SettingsPage from './components/SettingsPage';
 // import SearchPage from './components/SearchPage'; // Commentato come richiesto
@@ -23,6 +23,7 @@ import ShareEventModal from './components/ShareEventModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import LoadingSpinner from './components/LoadingSpinner';
 import EditSpotModal from './components/EditSpotModal'; // Importa il nuovo componente
+import AddSpotToKnotModal from './components/AddSpotToKnotModal'; // Nuovo componente
 
 // Hardcoded app ID for production - consider making this an environment variable if it changes per deployment
 const appId = "tagknot-app";
@@ -45,6 +46,9 @@ const App = () => {
   const [showEditSpotModal, setShowEditSpotModal] = useState(false);
   const [eventToEditInModal, setEventToEditInModal] = useState<EventType | null>(null);
 
+  // Stati per il modale "Aggiungi a Knot"
+  const [showAddSpotToKnotModal, setShowAddSpotToKnotModal] = useState(false);
+  const [spotToAddtoKnot, setSpotToAddtoKnot] = useState<EventType | null>(null);
 
   // States for confirmation modals
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -89,6 +93,8 @@ const App = () => {
     setShowShareModal(false);
     setShowEditSpotModal(false); // Reset del modale di modifica
     setEventToEditInModal(null); // Reset dell'evento da modificare
+    setShowAddSpotToKnotModal(false); // Reset del modale aggiungi a knot
+    setSpotToAddtoKnot(null); // Reset dello spot da aggiungere a knot
   };
 
   const handleLogout = async () => {
@@ -104,7 +110,7 @@ const App = () => {
     handleNavigate('myProfile');
   };
 
-  const handleEventCreated = () => {
+  const handleContentCreated = () => { // Rinominato da handleEventCreated
     handleNavigate('myProfile');
   };
 
@@ -252,6 +258,7 @@ const App = () => {
     setModalActiveTab(activeTab);
     setInitialEventIndexForModal(relatedEvents.findIndex(e => e.id === event.id));
     setShowEditSpotModal(false); // Assicurati che il modale di modifica sia chiuso
+    setShowAddSpotToKnotModal(false); // Assicurati che il modale aggiungi a knot sia chiuso
 
     if (isShareAction) {
       handleShareEvent(event);
@@ -265,6 +272,7 @@ const App = () => {
     setEventToEditInModal(event);
     setShowEditSpotModal(true);
     setShowEventDetailModal(false); // Assicurati che il modale di dettaglio sia chiuso
+    setShowAddSpotToKnotModal(false); // Assicurati che il modale aggiungi a knot sia chiuso
   };
 
   const handleEditSaveSuccess = () => {
@@ -273,6 +281,18 @@ const App = () => {
     // handleNavigate('myProfile'); // Esempio: naviga al profilo dopo il salvataggio
   };
 
+  // Funzione per mostrare il modale "Aggiungi a Knot"
+  const handleAddSpotToKnot = (spot: EventType) => {
+    setSpotToAddtoKnot(spot);
+    setShowAddSpotToKnotModal(true);
+    setShowEventDetailModal(false); // Chiudi il modale di dettaglio se aperto
+  };
+
+  const handleAddSpotToKnotSuccess = () => {
+    setShowAddSpotToKnotModal(false); // Chiudi il modale dopo l'aggiunta
+    setSpotToAddtoKnot(null);
+    // Potresti voler mostrare un messaggio di successo o aggiornare la UI
+  };
 
   if (loading) {
     return <LoadingSpinner message="Caricamento..." />;
@@ -289,16 +309,16 @@ const App = () => {
             {/* HomePage commentata come richiesto */}
             {/* {currentPage === 'home' && <HomePage onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} />} */}
 
-            {/* CreateSpotPage è solo per la creazione */}
-            {currentPage === 'createEvent' && <CreateSpotPage onEventCreated={handleEventCreated} onCancelEdit={() => handleNavigate('myProfile')} />}
+            {/* CreateContentPage ora per la creazione di Spot e Knot */}
+            {currentPage === 'createEvent' && <CreateContentPage onEventCreated={handleContentCreated} onCancelEdit={() => handleNavigate('myProfile')} />}
             {
-              currentPage === 'myProfile' && <UserProfileDisplay userIdToDisplay={userId || ''} onNavigate={handleNavigate} onEditEvent={handleEditEventInModal} onDeleteEvent={handleDeleteEvent} onRemoveTagFromEvent={handleRemoveTagFromEvent} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} />}
+              currentPage === 'myProfile' && <UserProfileDisplay userIdToDisplay={userId || ''} onNavigate={handleNavigate} onEditEvent={handleEditEventInModal} onDeleteEvent={handleDeleteEvent} onRemoveTagFromEvent={handleRemoveTagFromEvent} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onAddSpotToKnot={handleAddSpotToKnot} />}
             {currentPage === 'settings' && <SettingsPage onNavigate={handleNavigate} />}
 
             {/* SearchPage commentata come richiesto */}
             {/* {currentPage === 'search' && <SearchPage onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} />} */}
 
-            {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay userIdToDisplay={viewedUserId} onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onEditEvent={handleEditEventInModal} onDeleteEvent={async () => { }} onRemoveTagFromEvent={async () => { }} />}
+            {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay userIdToDisplay={viewedUserId} onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onEditEvent={handleEditEventInModal} onDeleteEvent={async () => { }} onRemoveTagFromEvent={async () => { }} onAddSpotToKnot={handleAddSpotToKnot} />}
             {currentPage === 'notifications' && <NotificationsPage setUnreadNotificationsCount={setUnreadNotificationsCount} />}
           </main>
           {
@@ -322,6 +342,14 @@ const App = () => {
                 event={eventToEditInModal}
                 onClose={() => setShowEditSpotModal(false)}
                 onSaveSuccess={handleEditSaveSuccess}
+              />
+            )}
+          {
+            showAddSpotToKnotModal && spotToAddtoKnot && (
+              <AddSpotToKnotModal
+                spot={spotToAddtoKnot}
+                onClose={() => setShowAddSpotToKnotModal(false)}
+                onAddSuccess={handleAddSpotToKnotSuccess}
               />
             )}
           {

@@ -8,11 +8,12 @@ import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
 import EventCard from './EventCard';
 import SpotCalendar from './SpotCalendar'; // Importa il nuovo componente del calendario
-import { EventType, UserProfileData, UserProfile, EventData } from '../interfaces';
+import KnotCard from './KnotCard'; // Nuovo componente per visualizzare i Knot
+import { EventType, UserProfileData, UserProfile, EventData, KnotType, KnotData } from '../interfaces'; // Importa KnotType e KnotData
 
 const appId = "tagknot-app"; // Assicurati che sia lo stesso usato in AppWrapper.tsx
 
-const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDeleteEvent, onRemoveTagFromEvent, onShowEventDetail, onLikeToggle }: { userIdToDisplay: string; onNavigate: (page: string, id?: string | null) => void; onEditEvent: (event: EventType) => void; onDeleteEvent: (eventId: string, isPublic: boolean) => Promise<void>; onRemoveTagFromEvent: (eventId: string) => Promise<void>; onShowEventDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void; onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>; }) => {
+const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDeleteEvent, onRemoveTagFromEvent, onShowEventDetail, onLikeToggle, onAddSpotToKnot }: { userIdToDisplay: string; onNavigate: (page: string, id?: string | null) => void; onEditEvent: (event: EventType) => void; onDeleteEvent: (eventId: string, isPublic: boolean) => Promise<void>; onRemoveTagFromEvent: (eventId: string) => Promise<void>; onShowEventDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void; onLikeToggle: (eventId: string, isLiked: boolean) => Promise<void>; onAddSpotToKnot: (spot: EventType) => void; }) => {
   const authContext = useAuth();
   const currentUser = authContext?.currentUser;
   const currentUserId = authContext?.userId;
@@ -20,9 +21,11 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [myEvents, setMyEvents] = useState<EventType[]>([]);
-  const [activeTab, setActiveTab] = useState('myEvents'); // Aggiunto 'calendar' come opzione
+  const [myKnots, setMyKnots] = useState<KnotType[]>([]); // Nuovo stato per i Knot
+  const [activeTab, setActiveTab] = useState('myEvents');
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [loadingMyEvents, setLoadingMyEvents] = useState(true);
+  const [loadingMyKnots, setLoadingMyKnots] = useState(true); // Nuovo stato per il caricamento dei Knot
   const [isFollowing, setIsFollowing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +36,7 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
       if (isMounted) {
         setLoadingProfile(false);
         setLoadingMyEvents(false);
+        setLoadingMyKnots(false);
         setError("ID utente non fornito per la visualizzazione del profilo.");
       }
       return;
@@ -63,14 +67,15 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
 
     const isOwnProfileBeingViewed = currentUserId === userIdToDisplay;
 
-    let myEventsQuery;
+    // Fetch Events
+    let eventsQuery;
     if (isOwnProfileBeingViewed) {
-      myEventsQuery = query(
+      eventsQuery = query(
         collection(db, `artifacts/${appId}/users/${userIdToDisplay}/events`),
         orderBy('createdAt', 'desc')
       );
     } else {
-      myEventsQuery = query(
+      eventsQuery = query(
         collection(db, `artifacts/${appId}/public/data/events`),
         where('creatorId', '==', userIdToDisplay),
         where('isPublic', '==', true),
@@ -78,9 +83,8 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
       );
     }
 
-    const unsubscribeMyEvents = onSnapshot(myEventsQuery, (snapshot) => {
+    const unsubscribeEvents = onSnapshot(eventsQuery, (snapshot) => {
       if (isMounted) {
-        // Corretto: Cast a EventData prima di aggiungere l'ID
         const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as EventData) }) as EventType);
         setMyEvents(fetchedEvents);
         setLoadingMyEvents(false);
@@ -93,10 +97,42 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
       }
     });
 
+    // Fetch Knots
+    let knotsQuery;
+    if (isOwnProfileBeingViewed) {
+      knotsQuery = query(
+        collection(db, `artifacts/${appId}/users/${userIdToDisplay}/knots`),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      knotsQuery = query(
+        collection(db, `artifacts/${appId}/public/data/knots`),
+        where('creatorId', '==', userIdToDisplay),
+        where('status', '==', 'public'), // Solo Knot pubblici per altri utenti
+        orderBy('createdAt', 'desc')
+      );
+    }
+
+    const unsubscribeKnots = onSnapshot(knotsQuery, (snapshot) => {
+      if (isMounted) {
+        const fetchedKnots = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as KnotData) }) as KnotType);
+        setMyKnots(fetchedKnots);
+        setLoadingMyKnots(false);
+      }
+    }, (err) => {
+      if (isMounted) {
+        console.error("Error fetching user's knots:", err);
+        setError("Errore nel caricamento dei knot dell'utente.");
+        setLoadingMyKnots(false);
+      }
+    });
+
+
     return () => {
       isMounted = false;
       unsubscribeProfile();
-      unsubscribeMyEvents();
+      unsubscribeEvents();
+      unsubscribeKnots(); // Cleanup per i Knot
     };
   }, [userIdToDisplay, currentUser, currentUserId, currentUserProfile]);
 
@@ -132,7 +168,7 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
 
   const isOwnProfile = currentUserId === userIdToDisplay;
 
-  if (loadingProfile || loadingMyEvents) {
+  if (loadingProfile || loadingMyEvents || loadingMyKnots) {
     return <LoadingSpinner message="Caricamento profilo..." />;
   }
 
@@ -188,15 +224,24 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
           <div className="flex justify-center space-x-6">
             <button
               onClick={() => setActiveTab('myEvents')}
-              className={`py-3 px-6 text-lg font-semibold ${activeTab === 'myEvents' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
+              className={`py-3 px-6 text-lg font-semibold flex items-center space-x-2 ${activeTab === 'myEvents' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
             >
-              Spot Creati ({myEvents.length})
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+              <span>Spot Creati ({myEvents.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('myKnots')}
+              className={`py-3 px-6 text-lg font-semibold flex items-center space-x-2 ${activeTab === 'myKnots' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+              <span>Knot ({myKnots.length})</span>
             </button>
             <button
               onClick={() => setActiveTab('calendar')}
-              className={`py-3 px-6 text-lg font-semibold ${activeTab === 'calendar' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
+              className={`py-3 px-6 text-lg font-semibold flex items-center space-x-2 ${activeTab === 'calendar' ? 'text-gray-800 border-b-2 border-gray-800' : 'text-gray-600 hover:text-gray-800'}`}
             >
-              Calendario
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              <span>Calendario</span>
             </button>
           </div>
         </div>
@@ -213,13 +258,25 @@ const UserProfileDisplay = ({ userIdToDisplay, onNavigate, onEditEvent, onDelete
                     currentUser={currentUser}
                     onFollowToggle={async () => { }}
                     followingUsers={[]}
-                    onEdit={onEditEvent} // Passa la prop onEditEvent direttamente
+                    onEdit={onEditEvent}
                     onDelete={onDeleteEvent}
                     isProfileView={true}
                     onLikeToggle={onLikeToggle}
                     onShowEventDetail={(clickedEvent) => onShowEventDetail(clickedEvent, myEvents, 'myEvents')}
-                    onRemoveTag={async () => { }}
+                    onRemoveTag={onRemoveTagFromEvent}
+                    onAddSpotToKnot={onAddSpotToKnot} // Passa la prop
                   />
+                </div>
+              ))
+            )
+          )}
+          {activeTab === 'myKnots' && (
+            myKnots.length === 0 ? (
+              <p className="text-center text-gray-600 col-span-full mt-10"> Nessun Knot creato.</p>
+            ) : (
+              myKnots.map((knot) => (
+                <div key={knot.id} className="w-full">
+                  <KnotCard knot={knot} /> {/* Renderizza il nuovo KnotCard */}
                 </div>
               ))
             )
