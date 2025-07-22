@@ -224,7 +224,7 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
           creatorId: userId,
           creatorUsername: userProfile.username,
           creatorProfileImage: userProfile.profileImage,
-          tag: tag.startsWith('#') ? tag : `#${tag}`,
+          tag: tag, // Rimosso l'aggiunta automatica di '#'
           description,
           coverImage: finalCoverImage,
           date,
@@ -250,7 +250,7 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
           creatorId: userId,
           creatorUsername: userProfile.username,
           creatorProfileImage: userProfile.profileImage,
-          tag: tag.startsWith('#') ? tag : `#${tag}`,
+          tag: tag, // Rimosso l'aggiunta automatica di '#'
           description,
           coverImage: finalCoverImage,
           locationName: locationName || undefined,

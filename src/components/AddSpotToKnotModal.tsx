@@ -106,7 +106,7 @@ const AddSpotToKnotModal: React.FC<AddSpotToKnotModalProps> = ({ spot, onClose, 
           <h3 className="text-2xl font-bold text-gray-800 mb-4">Aggiungi Spot a Knot</h3>
           <AlertMessage message={message} type={messageType} />
 
-          <p className="text-gray-700 mb-4">Aggiungi lo spot "<span className="font-semibold">#{spot.tag}</span>" a uno dei tuoi Knot:</p>
+          <p className="text-gray-700 mb-4">Aggiungi lo spot "<span className="font-semibold">{spot.tag}</span>" a uno dei tuoi Knot:</p>
 
           {loadingKnots ? (
             <LoadingSpinner message="Caricamento Knot..." />
@@ -124,7 +124,7 @@ const AddSpotToKnotModal: React.FC<AddSpotToKnotModalProps> = ({ spot, onClose, 
                 <option value="">Seleziona un Knot</option>
                 {userKnots.map(knot => (
                   <option key={knot.id} value={knot.id}>
-                    #{knot.tag} ({knot.spotIds.length} spot)
+                    {knot.tag} ({knot.spotIds.length} spot)
                   </option>
                 ))}
               </select>

@@ -172,7 +172,7 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
     }
     // La location è opzionale, ma se la ricerca è stata usata, deve esserci una selezione valida
     if (editLocationSearch && (!editLocationName || !editLocationCoords)) {
-      setEditMessage('Per favore, seleziona una posizione valida dai suggerimenti o lascia il campo Ricerca Posizione vuoto.');
+      setEditMessage('Per favor, seleziona una posizione valida dai suggerimenti o lascia il campo Ricerca Posizione vuoto.');
       setEditMessageType('error');
       return;
     }
@@ -204,7 +204,7 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
 
     try {
       const updatedEventData: Partial<EventData> = {
-        tag: editTag.startsWith('#') ? editTag : `#${editTag}`,
+        tag: editTag, // Rimosso l'aggiunta automatica di '#'
         description: editDescription,
         coverImage: finalCoverImageUrl,
         date: editDate,
@@ -408,7 +408,7 @@ const EditSpotModal: React.FC<EditSpotModalProps> = ({ event, onClose, onSaveSuc
                 type="checkbox"
                 id="editIsPublic"
                 checked={editIsPublic}
-                onChange={(e) => setEditIsPublic(e.target.checked)} // Corretto da setIsPublic
+                onChange={(e) => setEditIsPublic(e.target.checked)}
                 className="h-5 w-5 text-gray-700 rounded border-gray-300 focus:ring-gray-500"
               />
               <label htmlFor="editIsPublic" className="ml-2 block text-sm text-gray-700">

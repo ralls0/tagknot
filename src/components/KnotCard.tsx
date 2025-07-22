@@ -30,7 +30,7 @@ const KnotCard: React.FC<KnotCardProps> = ({ knot }) => {
       )}
 
       <div className="p-4">
-        <h3 className="text-xl font-bold text-gray-800 mb-2 truncate">#{knot.tag} </h3>
+        <h3 className="text-xl font-bold text-gray-800 mb-2 truncate">{knot.tag} </h3>
         {knot.description && <p className="text-gray-700 text-sm mb-3 truncate"> {knot.description} </p>}
         <div className="text-gray-600 text-xs space-y-1">
           <p className="flex items-center">
