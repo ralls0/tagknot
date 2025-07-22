@@ -210,7 +210,7 @@ const EventCard: React.FC<EventCardProps> = ({
           <span className="text-sm"> {event.likes ? event.likes.length : 0} </span>
         </button>
         <button onClick={handleCardClick} className="flex items-center space-x-1 text-gray-600 hover:text-gray-800 transition-colors">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.336-3.111A8.85 8.85 0 012 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd"></path></svg>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" clipRule="evenodd"></path></svg>
           <span className="text-sm"> {event.commentCount || 0} </span>
         </button>
         {/* <button onClick={() => onShareEvent(currentEvent)} className="flex items-center space-x-1 text-gray-600 hover:text-gray-800 transition-colors">

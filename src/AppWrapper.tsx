@@ -129,13 +129,17 @@ const App = () => {
   };
 
   const confirmDelete = async () => {
-    if (!itemToDelete || !userId) return;
+    if (!itemToDelete || !userId) {
+      console.error("Deletion failed: itemToDelete or userId is missing.");
+      return;
+    }
 
     const { id, type, isPublic, creatorId } = itemToDelete;
     const batch = writeBatch(db);
 
     try {
       if (type === 'event') {
+        console.log(`Attempting to delete event: ${id}, isPublic: ${isPublic}`);
         // 1. Elimina lo spot dalle collezioni private e pubbliche
         batch.delete(doc(db, `artifacts/${appId}/users/${userId}/events`, id));
         if (isPublic) {
@@ -143,51 +147,55 @@ const App = () => {
         }
 
         // 2. Trova tutti i knot che contengono questo spot e rimuovi la referenza
+        // Query per i knot pubblici che contengono lo spot
         const publicKnotsQuery = query(collection(db, `artifacts/${appId}/public/data/knots`), where('spotIds', 'array-contains', id));
-        const privateKnotsQuery = query(collection(db, `artifacts/${appId}/users/${userId}/knots`), where('spotIds', 'array-contains', id));
-
-        const [publicKnotsSnapshot, privateKnotsSnapshot] = await Promise.all([
-          getDocs(publicKnotsQuery),
-          getDocs(privateKnotsQuery)
-        ]);
-
+        const publicKnotsSnapshot = await getDocs(publicKnotsQuery);
         publicKnotsSnapshot.forEach(knotDoc => {
+          console.log(`Removing event ${id} from public knot: ${knotDoc.id}`);
           batch.update(knotDoc.ref, { spotIds: arrayRemove(id) });
         });
+
+        // Query per i knot privati dell'utente corrente che contengono lo spot
+        const privateKnotsQuery = query(collection(db, `artifacts/${appId}/users/${userId}/knots`), where('spotIds', 'array-contains', id));
+        const privateKnotsSnapshot = await getDocs(privateKnotsQuery);
         privateKnotsSnapshot.forEach(knotDoc => {
+          console.log(`Removing event ${id} from private knot: ${knotDoc.id}`);
           batch.update(knotDoc.ref, { spotIds: arrayRemove(id) });
         });
 
       } else if (type === 'knot') {
+        console.log(`Attempting to delete knot: ${id}, isPublic: ${isPublic}, creatorId: ${creatorId}`);
         // 1. Elimina il knot dalle collezioni private e pubbliche
         batch.delete(doc(db, `artifacts/${appId}/users/${userId}/knots`, id));
-        if (isPublic) { // Per i knot, isPublic si basa sullo status del knot
+        if (isPublic) {
           batch.delete(doc(db, `artifacts/${appId}/public/data/knots`, id));
         }
 
         // 2. Trova tutti gli spot che appartengono a questo knot e rimuovi la referenza
+        // Query per gli eventi pubblici che contengono questo knot
         const publicEventsQuery = query(collection(db, `artifacts/${appId}/public/data/events`), where('knotIds', 'array-contains', id));
-        const privateEventsQuery = query(collection(db, `artifacts/${appId}/users/${userId}/events`), where('knotIds', 'array-contains', id));
-
-        const [publicEventsSnapshot, privateEventsSnapshot] = await Promise.all([
-          getDocs(publicEventsQuery),
-          getDocs(privateEventsQuery)
-        ]);
-
+        const publicEventsSnapshot = await getDocs(publicEventsQuery);
         publicEventsSnapshot.forEach(eventDoc => {
+          console.log(`Removing knot ${id} from public event: ${eventDoc.id}`);
           batch.update(eventDoc.ref, { knotIds: arrayRemove(id) });
         });
+
+        // Query per gli eventi privati dell'utente corrente che contengono questo knot
+        const privateEventsQuery = query(collection(db, `artifacts/${appId}/users/${userId}/events`), where('knotIds', 'array-contains', id));
+        const privateEventsSnapshot = await getDocs(privateEventsQuery);
         privateEventsSnapshot.forEach(eventDoc => {
+          console.log(`Removing knot ${id} from private event: ${eventDoc.id}`);
           batch.update(eventDoc.ref, { knotIds: arrayRemove(id) });
         });
       }
 
       await batch.commit();
       console.log(`${type} eliminato con successo!`);
-      // Re-naviga o aggiorna la UI dopo l'eliminazione
       handleNavigate('myProfile');
     } catch (error) {
       console.error(`Errore durante l'eliminazione di ${type}:`, error);
+      // Mostra un messaggio di errore all'utente
+      // alert(`Errore durante l'eliminazione di ${type}: ${error.message}`); // Sostituire con un modale
     } finally {
       setShowDeleteConfirm(false);
       setItemToDelete(null);
@@ -272,7 +280,6 @@ const App = () => {
       });
 
       // Se l'utente corrente è il creatore dell'evento, aggiorna anche il documento privato
-      // Questo è importante per la coerenza della visualizzazione nel profilo del creatore
       if (eventCreatorId === userId) {
         batch.update(privateEventRef, {
           likes: likeUpdate
@@ -284,7 +291,8 @@ const App = () => {
       // Dopo l'aggiornamento di Firestore, recupera l'evento aggiornato e aggiorna lo stato del modale
       const updatedEventSnap = await getDoc(publicEventRef);
       if (updatedEventSnap.exists()) {
-        setSelectedEventForModal({ id: updatedEventSnap.id, ...(updatedEventSnap.data() as EventData) });
+        // Chiama handleUpdateSelectedEvent per aggiornare sia selectedEventForModal che relatedEventsForModal
+        handleUpdateSelectedEvent({ id: updatedEventSnap.id, ...(updatedEventSnap.data() as EventData) });
       }
 
       // Logica per la notifica solo se non è il proprio evento e se è stato aggiunto un like (non rimosso)
@@ -417,8 +425,8 @@ const App = () => {
                 onRemoveTagFromEvent={handleRemoveTagFromEvent}
                 onLikeToggle={handleLikeToggle}
                 onShareEvent={handleShareEvent}
-                onAddSpotToKnot={handleAddSpotToKnot}
                 onUpdateEvent={handleUpdateSelectedEvent} // Passa la nuova callback
+                onAddSpotToKnot={handleAddSpotToKnot} // Aggiunto onAddSpotToKnot
               />
             )}
           {

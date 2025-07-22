@@ -168,31 +168,65 @@ const SpotCalendar: React.FC<SpotCalendarProps> = ({ spots, knots, onShowSpotDet
           <p className="text-gray-600 text-center">Nessun spot o knot imminente.</p>
         ) : (
           <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
-            {upcomingItems.map(item => (
-              <div
-                key={item.id}
-                className="flex items-center space-x-3 bg-gray-50 p-3 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
-                onClick={() => onShowSpotDetail(item as EventType)} // Cast to EventType for onShowSpotDetail
-              >
-                {item.type === 'event' ? (
-                  <svg className="w-5 h-5 text-blue-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd"></path></svg>
-                ) : (
-                  <svg className="w-5 h-5 text-purple-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1V7z"></path></svg>
-                )}
-                <div>
-                  <p className="font-semibold text-gray-800">
-                    {item.type === 'event' ? `#${item.tag}` : `Knot: ${item.tag}`}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {item.type === 'event' ?
-                      `${new Date(`${item.date}T${item.time}`).toLocaleDateString('it-IT')} alle ${item.time}` :
-                      `${new Date(item.startDate).toLocaleDateString('it-IT')} - ${new Date(item.endDate).toLocaleDateString('it-IT')}`
-                    }
-                  </p>
-                  <p className="text-xs text-gray-500">{item.locationName}</p>
+            {upcomingItems.map(item => {
+              const defaultImage = item.locationName ?
+                `https://placehold.co/100x100/E0E0E0/888?text=${encodeURIComponent(item.locationName.split(',')[0])}` :
+                'https://placehold.co/100x100/E0E0E0/888?text=No+Image';
+
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-md border border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => onShowSpotDetail(item as EventType)} // Cast to EventType for onShowSpotDetail
+                >
+                  <div className="flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-lg overflow-hidden">
+                    {item.type === 'event' && (item as EventType).coverImage ? (
+                      <img
+                        src={(item as EventType).coverImage}
+                        alt={(item as EventType).tag}
+                        className="w-full h-full object-cover"
+                        onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.onerror = null; e.currentTarget.src = defaultImage; }}
+                      />
+                    ) : item.type === 'knot' && (item as KnotType).coverImage ? (
+                      <img
+                        src={(item as KnotType).coverImage}
+                        alt={(item as KnotType).tag}
+                        className="w-full h-full object-cover"
+                        onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => { e.currentTarget.onerror = null; e.currentTarget.src = defaultImage; }}
+                      />
+                    ) : (
+                      <img
+                        src={defaultImage}
+                        alt="Placeholder"
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="flex-grow">
+                    <p className="font-semibold text-gray-800 text-lg sm:text-xl">
+                      {item.type === 'event' ? `${(item as EventType).tag}` : `Knot: ${(item as KnotType).tag}`}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {item.type === 'event' ?
+                        `${new Date(`${(item as EventType).date}T${(item as EventType).time}`).toLocaleDateString('it-IT')} alle ${(item as EventType).time}` :
+                        `${new Date((item as KnotType).startDate).toLocaleDateString('it-IT')} - ${new Date((item as KnotType).endDate).toLocaleDateString('it-IT')}`
+                      }
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">{item.locationName}</p>
+                    <div className="flex items-center space-x-2 sm:space-x-3 text-gray-500 text-xs sm:text-sm mt-1">
+                      <span className="flex items-center">
+                        <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-0.5 sm:mr-1 text-red-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd"></path></svg>
+                        {item.type === 'event' ? ((item as EventType).likes ? (item as EventType).likes.length : 0) : 0}
+                      </span>
+                      <span className="flex items-center">
+                        <svg className="w-3 h-3 sm:w-4 sm:h-4 mr-0.5 sm:mr-1 text-gray-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" clipRule="evenodd"></path></svg>
+                        {item.type === 'event' ? ((item as EventType).commentCount ? (item as EventType).commentCount : 0) : 0}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
