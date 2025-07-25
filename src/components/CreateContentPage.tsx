@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'; // Aggiunto useEffect
-import { collection, serverTimestamp, Timestamp, doc, setDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, serverTimestamp, Timestamp, doc, setDoc, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 import AlertMessage from './AlertMessage';
-import { EventData, KnotData } from '../interfaces';
+import { EventData, KnotData, GroupType } from '../interfaces'; // Importa GroupType
 
 const appId = "tagknot-app";
 
@@ -63,6 +63,12 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
   const { userId, userProfile } = useAuth();
   const [contentType, setContentType] = useState<'spot' | 'knot'>('spot'); // 'spot' or 'knot'
 
+  // Common states for both Spot and Knot
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
+
   // Spot specific states
   const [tag, setTag] = useState('');
   const [description, setDescription] = useState('');
@@ -70,14 +76,15 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
   const [coverImageUrlInput, setCoverImageUrlInput] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
-  const [locationName, setLocationName] = useState(''); // Questo sarà il nome visualizzato e salvato
-  const [locationSearchInput, setLocationSearchInput] = useState(''); // Questo sarà l'input per la ricerca
+  const [locationName, setLocationName] = useState('');
+  const [locationSearchInput, setLocationSearchInput] = useState('');
   const [locationCoords, setLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [taggedUsersInput, setTaggedUsersInput] = useState('');
   const [isPublic, setIsPublic] = useState(true); // Default to public
   const [locationSuggestions, setLocationSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
   const [selectedLocationIndex, setSelectedLocationIndex] = useState(-1);
   const [loadingLocationSuggestions, setLoadingLocationSuggestions] = useState(false);
+  const [spotSelectedGroupId, setSpotSelectedGroupId] = useState<string | null>(null); // NEW: Group ID for Spot
 
 
   // Knot specific states
@@ -85,8 +92,8 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
   const [knotDescription, setKnotDescription] = useState('');
   const [knotCoverImageFile, setKnotCoverImageFile] = useState<File | null>(null);
   const [knotCoverImageUrlInput, setKnotCoverImageUrlInput] = useState('');
-  const [knotLocationName, setKnotLocationName] = useState(''); // Nome visualizzato e salvato
-  const [knotLocationSearchInput, setKnotLocationSearchInput] = useState(''); // Input per la ricerca
+  const [knotLocationName, setKnotLocationName] = useState('');
+  const [knotLocationSearchInput, setKnotLocationSearchInput] = useState('');
   const [knotLocationCoords, setKnotLocationCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [knotStartDate, setKnotStartDate] = useState('');
   const [knotEndDate, setKnotEndDate] = useState('');
@@ -94,12 +101,49 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
   const [knotLocationSuggestions, setKnotLocationSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
   const [selectedKnotLocationIndex, setSelectedKnotLocationIndex] = useState(-1);
   const [loadingKnotLocationSuggestions, setLoadingKnotLocationSuggestions] = useState(false);
+  const [knotSelectedGroupId, setKnotSelectedGroupId] = useState<string | null>(null); // NEW: Group ID for Knot
 
+  // NEW: States for user's groups
+  const [userGroups, setUserGroups] = useState<GroupType[]>([]);
+  const [loadingUserGroups, setLoadingUserGroups] = useState(true);
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
+  // Fetch user's groups
+  useEffect(() => {
+    let isMounted = true;
+    if (!userId) {
+      if (isMounted) setLoadingUserGroups(false);
+      return;
+    }
+
+    setLoadingUserGroups(true);
+    const q = query(
+      collection(db, `artifacts/${appId}/public/data/groups`),
+      where('members', 'array-contains', userId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (isMounted) {
+        const groups: GroupType[] = [];
+        snapshot.forEach(doc => {
+          // Correzione qui: cast a Omit<GroupType, 'id'> e poi aggiungi l'id
+          const data = doc.data() as Omit<GroupType, 'id'>;
+          groups.push({ id: doc.id, ...data });
+        });
+        setUserGroups(groups);
+        setLoadingUserGroups(false);
+      }
+    }, (error) => {
+      if (isMounted) {
+        console.error("Error fetching user groups:", error);
+        setLoadingUserGroups(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [userId]);
 
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -157,7 +201,7 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
     setLoading(true);
     let googleSuccess = false;
 
-    // --- Google Maps Geocoding API ---
+    // Try Google Maps Geocoding API first
     if (GOOGLE_MAPS_API_KEY) {
       try {
         const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(queryName)}&key=${GOOGLE_MAPS_API_KEY}`;
@@ -186,7 +230,7 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
       console.warn("GOOGLE_MAPS_API_KEY non configurata. Utilizzo solo OpenStreetMap.");
     }
 
-    // --- OpenStreetMap Nominatim fallback ---
+    // Fallback to Nominatim (OpenStreetMap) if Google Maps was not used or failed
     if (!googleSuccess) {
       try {
         const nominatimUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryName)}&format=json&limit=5&addressdetails=1`;
@@ -208,10 +252,8 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
         setSuggestions([]);
       }
     }
-
     setLoading(false);
   };
-
 
   // Debounced effect for Spot location search
   useEffect(() => {
@@ -288,7 +330,7 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
 
     try {
       if (contentType === 'spot') {
-        if (!tag || !date || !time || !locationName || !locationCoords) { // Aggiunto controllo locationCoords
+        if (!tag || !date || !time || !locationName || !locationCoords) {
           setMessage('Per favore, compila tutti i campi obbligatori per lo Spot e seleziona una posizione valida.');
           setMessageType('error');
           setIsSaving(false);
@@ -305,7 +347,14 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
 
         const parsedTaggedUsers = taggedUsersInput.split(',').map(t => t.trim()).filter(t => t);
 
-        const newEventRef = doc(collection(db, `artifacts/${appId}/users/${userId}/events`));
+        // Determina la collezione di destinazione
+        let targetCollectionRef;
+        if (spotSelectedGroupId) {
+          targetCollectionRef = collection(db, `artifacts/${appId}/public/data/groups/${spotSelectedGroupId}/events`);
+        } else {
+          targetCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/events`);
+        }
+        const newEventRef = doc(targetCollectionRef);
         const eventId = newEventRef.id;
 
         const newEventData: EventData = {
@@ -321,16 +370,18 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
           locationName,
           locationCoords,
           taggedUsers: parsedTaggedUsers,
-          isPublic,
+          isPublic: !spotSelectedGroupId ? isPublic : false, // Se associato a un gruppo, non è pubblico nel feed globale
           likes: [],
           commentCount: 0,
           knotIds: [],
+          groupId: spotSelectedGroupId || undefined, // Aggiungi groupId se selezionato
           createdAt: serverTimestamp() as Timestamp,
         };
 
         await setDoc(newEventRef, newEventData);
 
-        if (isPublic) {
+        // Se non è associato a un gruppo, e isPublic è true, salvalo anche nella collezione pubblica globale
+        if (!spotSelectedGroupId && isPublic) {
           await setDoc(doc(db, `artifacts/${appId}/public/data/events`, eventId), newEventData);
         }
 
@@ -338,8 +389,8 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
         setMessageType('success');
         onEventCreated();
       } else { // contentType === 'knot'
-        if (!knotTag || !knotStartDate || !knotEndDate || !knotLocationName || !knotLocationCoords) { // Aggiunto controllo knotLocationCoords
-          setMessage('Per favore, compila tutti i campi obbligatori per il Knot e seleziona una posizione valida.');
+        if (!knotTag || !knotStartDate || !knotEndDate || (!knotLocationName && knotLocationCoords) || (knotLocationName && !knotLocationCoords)) {
+          setMessage('Per favore, compila tutti i campi obbligatori per il Knot e seleziona una posizione valida se inserita.');
           setMessageType('error');
           setIsSaving(false);
           return;
@@ -360,7 +411,14 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
           setIsUploadingImage(false);
         }
 
-        const newKnotRef = doc(collection(db, `artifacts/${appId}/users/${userId}/knots`));
+        // Determina la collezione di destinazione
+        let targetCollectionRef;
+        if (knotSelectedGroupId) {
+          targetCollectionRef = collection(db, `artifacts/${appId}/public/data/groups/${knotSelectedGroupId}/knots`);
+        } else {
+          targetCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/knots`);
+        }
+        const newKnotRef = doc(targetCollectionRef);
         const knotId = newKnotRef.id;
 
         const newKnotData: KnotData = {
@@ -376,13 +434,15 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
           startDate: knotStartDate,
           endDate: knotEndDate,
           spotIds: [],
-          status: knotStatus,
+          status: knotSelectedGroupId ? 'internal' : knotStatus, // Se associato a un gruppo, lo stato è 'internal'
+          groupId: knotSelectedGroupId || undefined, // Aggiungi groupId se selezionato
           createdAt: serverTimestamp() as Timestamp,
         };
 
         await setDoc(newKnotRef, newKnotData);
 
-        if (knotStatus === 'public') {
+        // Se non è associato a un gruppo, e lo stato è pubblico, salvalo anche nella collezione pubblica globale
+        if (!knotSelectedGroupId && knotStatus === 'public') {
           await setDoc(doc(db, `artifacts/${appId}/public/data/knots`, knotId), newKnotData);
         }
 
@@ -552,18 +612,41 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
                     placeholder="username1, username2 (usa il tag profilo)"
                   />
                 </div>
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="isPublic"
-                    checked={isPublic}
-                    onChange={(e) => setIsPublic(e.target.checked)}
-                    className="h-5 w-5 text-gray-700 rounded border-gray-300 focus:ring-gray-500 bg-gray-50"
-                  />
-                  <label htmlFor="isPublic" className="ml-2 block text-sm text-gray-700">
-                    Rendi lo Spot pubblico (visibile nel feed degli utenti che ti seguono)
-                  </label>
+                <div>
+                  <label htmlFor="spotGroupId" className="block text-sm font-medium text-gray-700 mb-1">Associa a un Gruppo (Opzionale)</label>
+                  {loadingUserGroups ? (
+                    <div className="flex items-center text-gray-600">
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-500 mr-2"></div>
+                      Caricamento gruppi...
+                    </div>
+                  ) : (
+                    <select
+                      id="spotGroupId"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      value={spotSelectedGroupId || ''}
+                      onChange={(e) => setSpotSelectedGroupId(e.target.value || null)}
+                    >
+                      <option value="">Nessun Gruppo</option>
+                      {userGroups.map(group => (
+                        <option key={group.id} value={group.id}>{group.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
+                {!spotSelectedGroupId && ( // Mostra solo se non è associato a un gruppo
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="isPublic"
+                      checked={isPublic}
+                      onChange={(e) => setIsPublic(e.target.checked)}
+                      className="h-5 w-5 text-gray-700 rounded border-gray-300 focus:ring-gray-500 bg-gray-50"
+                    />
+                    <label htmlFor="isPublic" className="ml-2 block text-sm text-gray-700">
+                      Rendi lo Spot pubblico (visibile nel feed degli utenti che ti seguono)
+                    </label>
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -677,18 +760,41 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
                   </div>
                 </div>
                 <div>
-                  <label htmlFor="knotStatus" className="block text-sm font-medium text-gray-700 mb-1">Stato Knot</label>
-                  <select
-                    id="knotStatus"
-                    value={knotStatus}
-                    onChange={(e) => setKnotStatus(e.target.value as 'public' | 'private' | 'internal')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                  >
-                    <option value="public">Pubblico (visibile a tutti)</option>
-                    <option value="private">Privato (visibile solo a te)</option>
-                    <option value="internal">Interno (visibile a gruppi specifici - funzionalità futura)</option>
-                  </select>
+                  <label htmlFor="knotGroupId" className="block text-sm font-medium text-gray-700 mb-1">Associa a un Gruppo (Opzionale)</label>
+                  {loadingUserGroups ? (
+                    <div className="flex items-center text-gray-600">
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-500 mr-2"></div>
+                      Caricamento gruppi...
+                    </div>
+                  ) : (
+                    <select
+                      id="knotGroupId"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      value={knotSelectedGroupId || ''}
+                      onChange={(e) => setKnotSelectedGroupId(e.target.value || null)}
+                    >
+                      <option value="">Nessun Gruppo</option>
+                      {userGroups.map(group => (
+                        <option key={group.id} value={group.id}>{group.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
+                {!knotSelectedGroupId && ( // Mostra solo se non è associato a un gruppo
+                  <div>
+                    <label htmlFor="knotStatus" className="block text-sm font-medium text-gray-700 mb-1">Stato Knot</label>
+                    <select
+                      id="knotStatus"
+                      value={knotStatus}
+                      onChange={(e) => setKnotStatus(e.target.value as 'public' | 'private' | 'internal')}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    >
+                      <option value="public">Pubblico (visibile a tutti)</option>
+                      <option value="private">Privato (visibile solo a te)</option>
+                      <option value="internal">Interno (visibile a gruppi specifici - funzionalità futura)</option>
+                    </select>
+                  </div>
+                )}
               </>
             )}
 

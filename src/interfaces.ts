@@ -32,6 +32,7 @@ export interface EventData {
   likes: string[]; // Array of user UIDs who liked it
   commentCount: number;
   knotIds: string[]; // NEW: Array of KnotType IDs this event belongs to
+  groupId?: string; // NEW: Optional ID of the group this event belongs to
   createdAt: Timestamp;
 }
 
@@ -51,15 +52,18 @@ export interface CommentType extends CommentData {
 }
 
 export interface NotificationData {
-  type: 'like' | 'comment' | 'follow' | 'tag' | 'share';
+  type: 'like' | 'comment' | 'follow' | 'share' | 'group_invite'; // Aggiunto 'group_invite'
   fromUserId: string;
   fromUsername: string;
-  eventId?: string; // Optional, for like/comment/tag notifications
-  eventTag?: string; // Optional, for event-related notifications
+  eventId?: string; // Optional for follow notifications
+  eventTag?: string; // Optional for follow notifications
+  commentId?: string; // Optional for comment notifications
+  groupId?: string; // NEW: Optional for group_invite notifications
+  groupName?: string; // NEW: Optional for group_invite notifications
   message: string;
   createdAt: Timestamp;
   read: boolean;
-  imageUrl?: string; // Optional, e.g., event cover image or user profile image
+  imageUrl?: string; // Optional, e.g., event cover image or profile image
 }
 
 export interface NotificationType extends NotificationData {
@@ -67,46 +71,22 @@ export interface NotificationType extends NotificationData {
 }
 
 export interface AuthContextType {
-  currentUser: import('firebase/auth').User | null;
+  currentUser: any;
+  loading: boolean;
   userId: string | null;
   userProfile: UserProfile | null;
-  loading: boolean;
-}
-
-export interface EventDetailModalProps {
-  event: EventType;
-  onClose: () => void;
-  relatedEvents: EventType[];
-  initialIndex: number;
-  activeTab: string;
-  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
-  onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
-  onShareEvent: (event: EventType) => void;
-  onAddSpotToKnot: (spot: EventType) => void;
-  onUpdateEvent: (updatedEvent: EventType) => void;
-}
-
-export interface LoadingSpinnerProps {
-  message?: string;
-}
-
-export interface AlertMessageProps {
-  message: string;
-  type: 'success' | 'error' | '';
-}
-
-export interface UserAvatarProps {
-  imageUrl: string | undefined | null;
-  username: string | undefined | null;
-  size?: 'sm' | 'md' | 'lg' | 'xl'; // Define sizes for flexibility
-  className?: string;
-  onClick?: () => void; // Aggiunto onClick come prop opzionale
 }
 
 export interface FollowButtonProps {
   isFollowing: boolean;
   onToggle: () => void;
   disabled?: boolean;
+}
+
+export interface SpotCalendarProps {
+  spots: EventType[];
+  knots: KnotType[]; // Aggiunto per i Knot
+  onShowSpotDetail: (event: EventType | KnotType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
 }
 
 // NEW: Knot Interfaces
@@ -124,6 +104,7 @@ export interface KnotData {
   endDate: string; // YYYY-MM-DD
   spotIds: string[]; // Array of EventType IDs included in this knot
   status: 'public' | 'private' | 'internal'; // Public, Private, or Internal (for groups)
+  groupId?: string; // NEW: Optional ID of the group this knot belongs to
   createdAt: Timestamp;
 }
 
@@ -131,19 +112,83 @@ export interface KnotType extends KnotData {
   id: string; // Document ID from Firestore
 }
 
-export interface SpotCalendarProps {
-  spots: EventType[];
-  knots: KnotType[]; // Aggiunto per i Knot
-  onShowSpotDetail: (item: EventType | KnotType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+export interface AlertMessageProps {
+  message: string;
+  type: 'success' | 'error' | '';
 }
 
-// NEW: KnotDetailModal Props
+export interface EventDetailModalProps {
+  event: EventType;
+  onClose: () => void;
+  relatedEvents: EventType[];
+  initialIndex: number;
+  activeTab: string;
+  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
+  onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
+  onShareEvent: (event: EventType) => void;
+  onUpdateEvent: (updatedEvent: EventType) => void;
+  onAddSpotToKnot: (spot: EventType) => void;
+}
+
 export interface KnotDetailModalProps {
   knot: KnotType;
   onClose: () => void;
-  onShowEventDetail: (event: EventType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void;
+  onShowEventDetail: (event: EventType | KnotType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void; // Aggiornata la firma
   onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
   onShareEvent: (event: EventType) => void;
   onAddSpotToKnot: (spot: EventType) => void;
-  onEditEvent: (event: EventType) => void; // Permette di modificare uno spot dal KnotDetailModal
+  onEditEvent: (event: EventType) => void;
+}
+
+// NEW: Group Interfaces
+export interface GroupData {
+  type: 'group'; // Discriminator property
+  name: string;
+  description: string;
+  profileImage?: string; // Base64 string or URL (optional)
+  members: string[]; // Array of user UIDs who are members
+  creatorId: string;
+  createdAt: Timestamp;
+}
+
+export interface GroupType extends GroupData {
+  id: string; // Document ID from Firestore
+}
+
+export interface GroupsPageProps {
+  onShowCreateGroup: () => void;
+  onShowGroupDetail: (group: GroupType) => void;
+}
+
+export interface CreateGroupModalProps {
+  onClose: () => void;
+  onCreateSuccess: (groupId: string) => void;
+}
+
+export interface GroupProfileDisplayProps {
+  groupIdToDisplay: string;
+  onNavigate: (page: string, id?: string) => void;
+  onEditEvent: (event: EventType) => void;
+  onDeleteEvent: (eventId: string, isPublic: boolean, creatorId: string, groupId?: string) => Promise<void>;
+  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
+  onShowEventDetail: (event: EventType | KnotType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void; // Aggiornata la firma
+  onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
+  onAddSpotToKnot: (spot: EventType) => void;
+  onEditKnot: (knot: KnotType) => void;
+  onDeleteKnot: (knotId: string, isPublic: boolean, creatorId: string, groupId?: string) => Promise<void>;
+  onShowKnotDetail: (knot: KnotType) => void; // Aggiunta la prop
+}
+
+export interface UserProfileDisplayProps {
+  userIdToDisplay: string;
+  onNavigate: (page: string, id?: string) => void;
+  onEditEvent: (event: EventType) => void;
+  onDeleteEvent: (eventId: string, isPublic: boolean, creatorId: string, groupId?: string) => Promise<void>;
+  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
+  onShowEventDetail: (event: EventType | KnotType, relatedEvents?: EventType[], activeTab?: string, isShareAction?: boolean) => void; // Aggiornata la firma
+  onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
+  onAddSpotToKnot: (spot: EventType) => void;
+  onEditKnot: (knot: KnotType) => void;
+  onDeleteKnot: (knotId: string, isPublic: boolean, creatorId: string, groupId?: string) => Promise<void>;
+  onShowKnotDetail: (knot: KnotType) => void; // Aggiunta la prop
 }

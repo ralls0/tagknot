@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { signOut } from 'firebase/auth';
-import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, arrayRemove, arrayUnion, writeBatch, addDoc, serverTimestamp, Timestamp, getDocs } from 'firebase/firestore';
+import { doc, collection, query, where, orderBy, onSnapshot, getDoc, updateDoc, arrayRemove, arrayUnion, writeBatch, addDoc, serverTimestamp, Timestamp, getDocs, collectionGroup } from 'firebase/firestore';
 
 // Import Firebase services from the centralized config file
-import { auth, db } from './firebaseConfig';
+import { auth, db } from './firebaseConfig'; // Correzione della sintassi 'from'
 
 // Import shared interfaces
-import { EventType, NotificationData, KnotType, EventData } from './interfaces';
+import { EventType, NotificationData, KnotType, EventData, GroupType } from './interfaces';
 
 // Import components
 import { AuthProvider, useAuth } from './components/AuthContext';
@@ -23,7 +23,11 @@ import LoadingSpinner from './components/LoadingSpinner';
 import EditSpotModal from './components/EditSpotModal';
 import AddSpotToKnotModal from './components/AddSpotToKnotModal';
 import EditKnotModal from './components/EditKnotModal';
-import KnotDetailModal from './components/KnotDetailModal'; // Importa il nuovo componente
+import KnotDetailModal from './components/KnotDetailModal';
+import GroupsPage from './components/GroupsPage';
+import CreateGroupModal from './components/CreateGroupModal';
+import GroupProfileDisplay from './components/GroupProfileDisplay';
+import EditGroupModal from './components/EditGroupModal';
 
 // Hardcoded app ID for production - consider making this an environment variable if it changes per deployment
 const appId = "tagknot-app";
@@ -58,10 +62,17 @@ const App = () => {
   const [showKnotDetailModal, setShowKnotDetailModal] = useState(false);
   const [selectedKnotForModal, setSelectedKnotForModal] = useState<KnotType | null>(null);
 
+  // NUOVI STATI PER I GRUPPI
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+  const [showGroupProfileDisplay, setShowGroupProfileDisplay] = useState(false);
+  const [selectedGroupForDisplay, setSelectedGroupForDisplay] = useState<GroupType | null>(null);
+  const [showEditGroupModal, setShowEditGroupModal] = useState(false);
+  const [groupToEditInModal, setGroupToEditInModal] = useState<GroupType | null>(null);
+
 
   // Stati per i modali di conferma eliminazione
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ id: string; type: 'event' | 'knot'; isPublic?: boolean; creatorId?: string } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; type: 'event' | 'knot'; isPublic?: boolean; creatorId?: string; groupId?: string } | null>(null);
 
   const [showRemoveTagConfirm, setShowRemoveTagConfirm] = useState(false);
   const [eventToRemoveTagFrom, setEventToRemoveTagFrom] = useState<string | null>(null);
@@ -102,14 +113,19 @@ const App = () => {
     setViewedUserId(id);
     setShowEventDetailModal(false);
     setShowShareModal(false);
-    setShowEditSpotModal(false); // Reset del modale di modifica spot
-    setEventToEditInModal(null); // Reset dell'evento da modificare
-    setShowAddSpotToKnot(false); // Reset del modale aggiungi a knot
-    setSpotToAddtoKnot(null); // Reset dello spot da aggiungere a knot
-    setShowEditKnotModal(false); // Reset del modale di modifica knot
-    setKnotToEditInModal(null); // Reset del knot da modificare
-    setShowKnotDetailModal(false); // Reset del modale di dettaglio knot
-    setSelectedKnotForModal(null); // Reset del knot da visualizzare
+    setShowEditSpotModal(false);
+    setEventToEditInModal(null);
+    setShowAddSpotToKnot(false);
+    setSpotToAddtoKnot(null);
+    setShowEditKnotModal(false);
+    setKnotToEditInModal(null);
+    setShowKnotDetailModal(false);
+    setSelectedKnotForModal(null);
+    setShowCreateGroupModal(false);
+    setShowGroupProfileDisplay(false);
+    setSelectedGroupForDisplay(null);
+    setShowEditGroupModal(false);
+    setGroupToEditInModal(null);
   };
 
   const handleLogout = async () => {
@@ -125,12 +141,13 @@ const App = () => {
     handleNavigate('myProfile');
   };
 
-  const handleContentCreated = () => { // Rinominato da handleEventCreated
+  const handleContentCreated = () => {
     handleNavigate('myProfile');
   };
 
-  const handleDeleteItem = (id: string, type: 'event' | 'knot', isPublic?: boolean, creatorId?: string) => {
-    setItemToDelete({ id, type, isPublic, creatorId });
+  // Aggiornata la firma per includere groupId e rendere isPublic e creatorId obbligatori
+  const handleDeleteItem = async (id: string, type: 'event' | 'knot', isPublic: boolean, creatorId: string, groupId?: string): Promise<void> => {
+    setItemToDelete({ id, type, isPublic, creatorId, groupId });
     setShowDeleteConfirm(true);
   };
 
@@ -140,85 +157,80 @@ const App = () => {
       return;
     }
 
-    const { id, type, isPublic, creatorId } = itemToDelete;
+    const { id, type, isPublic, creatorId, groupId } = itemToDelete; // Destruttura groupId
     const batch = writeBatch(db);
 
     try {
+      // Determina la collezione di origine (privata dell'utente o di un gruppo)
+      let itemDocRef;
+      if (groupId) {
+        itemDocRef = doc(db, `artifacts/${appId}/public/data/groups/${groupId}/${type}s`, id);
+      } else {
+        itemDocRef = doc(db, `artifacts/${appId}/users/${userId}/${type}s`, id);
+      }
+
+      // Elimina dalla collezione di origine
+      batch.delete(itemDocRef);
+      console.log(`Aggiunta eliminazione ${type} da collezione di origine per ${id} al batch.`);
+
+      // Se l'elemento era pubblico (e non in un gruppo), elimina anche dalla collezione pubblica globale
+      if (isPublic && !groupId) { // Aggiunto controllo groupId
+        const publicItemDocRef = doc(db, `artifacts/${appId}/public/data/${type}s`, id);
+        batch.delete(publicItemDocRef);
+        console.log(`Aggiunta eliminazione ${type} pubblico per ${id} al batch.`);
+      }
+
+      // Pulisci i riferimenti nei knot (se è un evento) o negli eventi (se è un knot)
       if (type === 'event') {
-        console.log(`Tentativo di eliminare l'evento: ${id}. Pubblico: ${isPublic}. ID Creatore: ${creatorId}. ID Utente Corrente: ${userId}`);
-
-        // Elimina dalla collezione privata dell'utente
-        const privateEventDocRef = doc(db, `artifacts/${appId}/users/${userId}/events`, id);
-        batch.delete(privateEventDocRef);
-        console.log(`Aggiunta eliminazione evento privato per ${id} al batch.`);
-
-        // Se l'evento è marcato come pubblico, elimina anche dalla collezione pubblica
-        if (isPublic) {
-          const publicEventDocRef = doc(db, `artifacts/${appId}/public/data/events`, id);
-          batch.delete(publicEventDocRef);
-          console.log(`Aggiunta eliminazione evento pubblico per ${id} al batch.`);
-        }
-
-        // Pulisci i riferimenti nei knot (sia pubblici che privati, se di proprietà dell'utente corrente)
         const knotsToUpdateQueries = [
           query(collection(db, `artifacts/${appId}/public/data/knots`), where('spotIds', 'array-contains', id)),
           query(collection(db, `artifacts/${appId}/users/${userId}/knots`), where('spotIds', 'array-contains', id))
         ];
-
         for (const q of knotsToUpdateQueries) {
           const snapshot = await getDocs(q);
           snapshot.forEach(knotDoc => {
-            // Aggiorna solo se l'utente corrente è il creatore del knot (a causa delle regole di sicurezza)
             if (knotDoc.data().creatorId === userId) {
-              console.log(`Rimozione evento ${id} dal knot ${knotDoc.id} (di proprietà dell'utente corrente).`);
               batch.update(knotDoc.ref, { spotIds: arrayRemove(id) });
-            } else {
-              console.log(`Saltata l'aggiornamento per il knot ${knotDoc.id} (non di proprietà dell'utente corrente).`);
             }
           });
         }
+        // Anche per i knot dei gruppi
+        const groupKnotsQuery = query(collectionGroup(db, 'knots'), where('spotIds', 'array-contains', id));
+        const groupKnotsSnapshot = await getDocs(groupKnotsQuery);
+        groupKnotsSnapshot.forEach(knotDoc => {
+          // Solo se l'utente corrente è membro del gruppo che possiede il knot
+          // (Le regole di sicurezza di Firestore gestiranno i permessi effettivi)
+          batch.update(knotDoc.ref, { spotIds: arrayRemove(id) });
+        });
 
       } else if (type === 'knot') {
-        console.log(`Tentativo di eliminare il knot: ${id}. Pubblico: ${isPublic}. ID Creatore: ${creatorId}. ID Utente Corrente: ${userId}`);
-
-        // Elimina dalla collezione privata dell'utente
-        const privateKnotDocRef = doc(db, `artifacts/${appId}/users/${userId}/knots`, id);
-        batch.delete(privateKnotDocRef);
-        console.log(`Aggiunta eliminazione knot privato per ${id} al batch.`);
-
-        // Se il knot è marcato come pubblico, elimina anche dalla collezione pubblica
-        if (isPublic) {
-          const publicKnotDocRef = doc(db, `artifacts/${appId}/public/data/knots`, id);
-          batch.delete(publicKnotDocRef);
-          console.log(`Aggiunta eliminazione knot pubblico per ${id} al batch.`);
-        }
-
-        // Pulisci i riferimenti negli eventi (sia pubblici che privati, se di proprietà dell'utente corrente)
         const eventsToUpdateQueries = [
           query(collection(db, `artifacts/${appId}/public/data/events`), where('knotIds', 'array-contains', id)),
           query(collection(db, `artifacts/${appId}/users/${userId}/events`), where('knotIds', 'array-contains', id))
         ];
-
         for (const q of eventsToUpdateQueries) {
           const snapshot = await getDocs(q);
           snapshot.forEach(eventDoc => {
-            // Aggiorna solo se l'utente corrente è il creatore dell'evento (a causa delle regole di sicurezza)
             if (eventDoc.data().creatorId === userId) {
-              console.log(`Rimozione knot ${id} dall'evento ${eventDoc.id} (di proprietà dell'utente corrente).`);
               batch.update(eventDoc.ref, { knotIds: arrayRemove(id) });
-            } else {
-              console.log(`Saltata l'aggiornamento per l'evento ${eventDoc.id} (non di proprietà dell'utente corrente).`);
             }
           });
         }
+        // Anche per gli eventi dei gruppi
+        const groupEventsQuery = query(collectionGroup(db, 'events'), where('knotIds', 'array-contains', id));
+        const groupEventsSnapshot = await getDocs(groupEventsQuery);
+        groupEventsSnapshot.forEach(eventDoc => {
+          // Solo se l'utente corrente è membro del gruppo che possiede l'evento
+          // (Le regole di sicurezza di Firestore gestiranno i permessi effettivi)
+          batch.update(eventDoc.ref, { knotIds: arrayRemove(id) });
+        });
       }
 
       await batch.commit();
       console.log(`${type} eliminato con successo!`);
-      handleNavigate('myProfile'); // Naviga dopo l'eliminazione riuscita
+      handleNavigate('myProfile');
     } catch (error) {
       console.error(`Errore durante l'eliminazione di ${type}:`, error);
-      // Potresti voler mostrare un AlertMessage qui
     } finally {
       setShowDeleteConfirm(false);
       setItemToDelete(null);
@@ -284,31 +296,46 @@ const App = () => {
     const batch = writeBatch(db);
     const likeUpdate = isLiked ? arrayRemove(userId) : arrayUnion(userId);
 
-    const privateEventRef = doc(db, `artifacts/${appId}/users/${eventCreatorId}/events`, eventId);
-
-    // Se l'evento è pubblico, aggiorna il documento pubblico
+    // Determina il percorso del documento dell'evento
+    let eventDocRef;
+    // Tenta di recuperare prima il documento pubblico se eventIsPublic è true
     if (eventIsPublic) {
+      eventDocRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
+    } else {
+      // Se non è pubblico, cerca nella collezione privata del creatore
+      eventDocRef = doc(db, `artifacts/${appId}/users/${eventCreatorId}/events`, eventId);
+      // Se l'evento ha un groupId, cerca nella collezione del gruppo
+      const eventSnap = await getDoc(eventDocRef);
+      if (!eventSnap.exists()) { // Se non trovato nella collezione privata, prova nel gruppo
+        const groupEventQuery = query(collectionGroup(db, 'events'), where('__name__', '==', eventId));
+        const groupEventSnap = await getDocs(groupEventQuery);
+        if (!groupEventSnap.empty) {
+          eventDocRef = groupEventSnap.docs[0].ref;
+        } else {
+          console.warn("Evento non trovato in nessuna collezione per il toggle like.");
+          return;
+        }
+      }
+    }
+
+    const eventDocSnap = await getDoc(eventDocRef);
+    if (eventDocSnap.exists()) {
+      batch.update(eventDocRef, {
+        likes: likeUpdate
+      });
+    } else {
+      console.warn("Documento evento non trovato per il toggle like.");
+      return;
+    }
+
+    // Se l'evento è pubblico, aggiorna anche la sua controparte pubblica se non è già il riferimento principale
+    if (eventIsPublic && eventDocRef.path !== `artifacts/${appId}/public/data/events/${eventId}`) {
       const publicEventRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
       const publicEventDocSnap = await getDoc(publicEventRef);
       if (publicEventDocSnap.exists()) {
         batch.update(publicEventRef, {
           likes: likeUpdate
         });
-      } else {
-        console.warn("Evento pubblico non trovato per il toggle like, ma eventIsPublic era true. Salto l'aggiornamento pubblico.");
-      }
-    }
-
-    // Aggiorna il documento privato dell'evento se l'utente corrente è il creatore
-    // Questo è necessario per mantenere la consistenza tra pubblico e privato per gli eventi dell'utente
-    if (eventCreatorId === userId) {
-      const privateEventDocSnap = await getDoc(privateEventRef);
-      if (privateEventDocSnap.exists()) {
-        batch.update(privateEventRef, {
-          likes: likeUpdate
-        });
-      } else {
-        console.warn("Evento privato non trovato per il toggle like, anche se l'utente corrente è il creatore. Salto l'aggiornamento privato.");
       }
     }
 
@@ -316,22 +343,14 @@ const App = () => {
       await batch.commit();
 
       // Dopo l'aggiornamento di Firestore, recupera l'evento aggiornato e aggiorna lo stato del modale
-      let updatedEventSnap;
-      if (eventIsPublic) {
-        updatedEventSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/events`, eventId));
-      } else {
-        // Se l'evento non è pubblico, recupera la versione privata per l'aggiornamento del modale
-        updatedEventSnap = await getDoc(privateEventRef);
-      }
+      let updatedEventSnap = await getDoc(eventDocRef); // Recupera dal percorso che è stato effettivamente modificato
 
       if (updatedEventSnap && updatedEventSnap.exists()) {
-        // Chiamata a handleUpdateSelectedEvent per aggiornare lo stato dell'evento nel componente padre
         handleUpdateSelectedEvent({ id: updatedEventSnap.id, ...(updatedEventSnap.data() as EventData) } as EventType);
       }
 
       // Logica per la notifica solo se non è il proprio evento e se è stato aggiunto un like (non rimosso)
       if (eventCreatorId !== userId && !isLiked) {
-        // Recupera i dati più recenti dell'evento per la notifica
         const eventDocForNotification = updatedEventSnap?.data() as EventData | undefined;
 
         const notificationData: NotificationData = {
@@ -357,7 +376,7 @@ const App = () => {
     setShowShareModal(true);
   };
 
-  // Funzione per mostrare il modale di visualizzazione dettagli (per Spot)
+  // Funzione per mostrare il modale di visualizzazione dettagli (per Spot e Knot)
   const handleShowEventDetail = (item: EventType | KnotType, relatedEvents: EventType[] = [], activeTab: string = '', isShareAction: boolean = false) => {
     // Se l'item è un Knot, non aprire EventDetailModal, ma KnotDetailModal
     if (item.type === 'knot') {
@@ -373,7 +392,11 @@ const App = () => {
     setShowEditSpotModal(false);
     setShowAddSpotToKnot(false);
     setShowEditKnotModal(false);
-    setShowKnotDetailModal(false); // Assicurati che il modale Knot sia chiuso
+    setShowKnotDetailModal(false);
+    setShowCreateGroupModal(false);
+    setShowGroupProfileDisplay(false);
+    setShowEditGroupModal(false);
+
 
     if (isShareAction) {
       handleShareEvent(event);
@@ -389,7 +412,10 @@ const App = () => {
     setShowEventDetailModal(false);
     setShowAddSpotToKnot(false);
     setShowEditKnotModal(false);
-    setShowKnotDetailModal(false); // Assicurati che il modale Knot sia chiuso
+    setShowKnotDetailModal(false);
+    setShowCreateGroupModal(false);
+    setShowGroupProfileDisplay(false);
+    setShowEditGroupModal(false);
   };
 
   const handleEditSaveSuccess = () => {
@@ -403,7 +429,10 @@ const App = () => {
     setShowEventDetailModal(false);
     setShowEditSpotModal(false);
     setShowEditKnotModal(false);
-    setShowKnotDetailModal(false); // Assicurati che il modale Knot sia chiuso
+    setShowKnotDetailModal(false);
+    setShowCreateGroupModal(false);
+    setShowGroupProfileDisplay(false);
+    setShowEditGroupModal(false);
   };
 
   const handleAddSpotToKnotSuccess = () => {
@@ -418,7 +447,10 @@ const App = () => {
     setShowEventDetailModal(false);
     setShowEditSpotModal(false);
     setShowAddSpotToKnot(false);
-    setShowKnotDetailModal(false); // Assicurati che il modale Knot sia chiuso
+    setShowKnotDetailModal(false);
+    setShowCreateGroupModal(false);
+    setShowGroupProfileDisplay(false);
+    setShowEditGroupModal(false);
   };
 
   const handleKnotEditSaveSuccess = () => {
@@ -429,10 +461,78 @@ const App = () => {
   const handleShowKnotDetail = (knot: KnotType) => {
     setSelectedKnotForModal(knot);
     setShowKnotDetailModal(true);
-    setShowEventDetailModal(false); // Chiudi gli altri modali
+    setShowEventDetailModal(false);
     setShowEditSpotModal(false);
     setShowAddSpotToKnot(false);
     setShowEditKnotModal(false);
+    setShowCreateGroupModal(false);
+    setShowGroupProfileDisplay(false);
+    setShowEditGroupModal(false);
+  };
+
+  // NUOVE FUNZIONI PER I GRUPPI
+  const handleShowCreateGroup = () => {
+    setShowCreateGroupModal(true);
+    setShowEventDetailModal(false);
+    setShowEditSpotModal(false);
+    setShowAddSpotToKnot(false);
+    setShowEditKnotModal(false);
+    setShowKnotDetailModal(false);
+    setShowGroupProfileDisplay(false);
+    setShowEditGroupModal(false);
+  };
+
+  const handleCreateGroupSuccess = (groupId: string) => {
+    setShowCreateGroupModal(false);
+    handleNavigate('groupProfile', groupId); // Naviga alla vista del gruppo appena creato
+  };
+
+  const handleShowGroupDetail = (group: GroupType) => {
+    setSelectedGroupForDisplay(group);
+    setShowGroupProfileDisplay(true);
+    setShowEventDetailModal(false);
+    setShowEditSpotModal(false);
+    setShowAddSpotToKnot(false);
+    setShowEditKnotModal(false);
+    setShowKnotDetailModal(false);
+    setShowCreateGroupModal(false);
+    setShowEditGroupModal(false);
+  };
+
+  // NUOVA FUNZIONE: per mostrare il modale di modifica gruppo
+  const handleEditGroupInModal = (groupId: string) => {
+    if (selectedGroupForDisplay && selectedGroupForDisplay.id === groupId) {
+      setGroupToEditInModal(selectedGroupForDisplay);
+      setShowEditGroupModal(true);
+    } else {
+      const fetchGroupAndOpenModal = async () => {
+        try {
+          const groupRef = doc(db, `artifacts/${appId}/public/data/groups`, groupId);
+          const groupSnap = await getDoc(groupRef);
+          if (groupSnap.exists()) {
+            const data = groupSnap.data() as Omit<GroupType, 'id'>;
+            setGroupToEditInModal({ id: groupSnap.id, ...data });
+            setShowEditGroupModal(true);
+            setShowEventDetailModal(false);
+            setShowEditSpotModal(false);
+            setShowAddSpotToKnot(false);
+            setShowEditKnotModal(false);
+            setShowKnotDetailModal(false);
+            setShowCreateGroupModal(false);
+            setShowGroupProfileDisplay(false);
+          } else {
+            console.error("Gruppo non trovato per la modifica:", groupId);
+          }
+        } catch (error) {
+          console.error("Errore nel recupero del gruppo per la modifica:", error);
+        }
+      };
+      fetchGroupAndOpenModal();
+    }
+  };
+
+  const handleEditGroupSaveSuccess = () => {
+    setShowEditGroupModal(false);
   };
 
 
@@ -450,11 +550,49 @@ const App = () => {
           <main className="pb-16 md:pb-0">
             {currentPage === 'createEvent' && <CreateContentPage onEventCreated={handleContentCreated} onCancelEdit={() => handleNavigate('myProfile')} />}
             {
-              currentPage === 'myProfile' && userId && <UserProfileDisplay userIdToDisplay={userId} onNavigate={handleNavigate} onEditEvent={handleEditEventInModal} onDeleteEvent={async (eventId, isPublic) => handleDeleteItem(eventId, 'event', isPublic)} onRemoveTagFromEvent={handleRemoveTagFromEvent} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onAddSpotToKnot={handleAddSpotToKnot} onEditKnot={handleEditKnotInModal} onDeleteKnot={async (knotId, isPublic, creatorId) => handleDeleteItem(knotId, 'knot', isPublic, creatorId)} onShowKnotDetail={handleShowKnotDetail} />} {/* Passa onShowKnotDetail */}
+              currentPage === 'myProfile' && userId && <UserProfileDisplay
+                userIdToDisplay={userId}
+                onNavigate={handleNavigate}
+                onEditEvent={handleEditEventInModal}
+                onDeleteEvent={(eventId, isPublic, creatorId, groupId) => handleDeleteItem(eventId, 'event', isPublic, creatorId, groupId)}
+                onRemoveTagFromEvent={handleRemoveTagFromEvent}
+                onShowEventDetail={handleShowEventDetail}
+                onLikeToggle={handleLikeToggle}
+                onAddSpotToKnot={handleAddSpotToKnot}
+                onEditKnot={handleEditKnotInModal}
+                onDeleteKnot={(knotId, isPublic, creatorId, groupId) => handleDeleteItem(knotId, 'knot', isPublic, creatorId, groupId)}
+                onShowKnotDetail={handleShowKnotDetail}
+              />}
             {currentPage === 'settings' && <SettingsPage onNavigate={handleNavigate} />}
 
-            {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay userIdToDisplay={viewedUserId} onNavigate={handleNavigate} onShowEventDetail={handleShowEventDetail} onLikeToggle={handleLikeToggle} onEditEvent={handleEditEventInModal} onDeleteEvent={async (eventId, isPublic) => handleDeleteItem(eventId, 'event', isPublic)} onRemoveTagFromEvent={async (eventId) => handleRemoveTagFromEvent(eventId)} onAddSpotToKnot={handleAddSpotToKnot} onEditKnot={handleEditKnotInModal} onDeleteKnot={async (knotId, isPublic, creatorId) => handleDeleteItem(knotId, 'knot', isPublic, creatorId)} onShowKnotDetail={handleShowKnotDetail} />} {/* Passa onShowKnotDetail */}
+            {currentPage === 'userProfile' && viewedUserId && <UserProfileDisplay
+              userIdToDisplay={viewedUserId}
+              onNavigate={handleNavigate}
+              onShowEventDetail={handleShowEventDetail}
+              onLikeToggle={handleLikeToggle}
+              onEditEvent={handleEditEventInModal}
+              onDeleteEvent={(eventId, isPublic, creatorId, groupId) => handleDeleteItem(eventId, 'event', isPublic, creatorId, groupId)}
+              onRemoveTagFromEvent={handleRemoveTagFromEvent}
+              onAddSpotToKnot={handleAddSpotToKnot}
+              onEditKnot={handleEditKnotInModal}
+              onDeleteKnot={(knotId, isPublic, creatorId, groupId) => handleDeleteItem(knotId, 'knot', isPublic, creatorId, groupId)}
+              onShowKnotDetail={handleShowKnotDetail}
+            />}
             {currentPage === 'notifications' && <NotificationsPage setUnreadNotificationsCount={setUnreadNotificationsCount} />}
+            {currentPage === 'groups' && <GroupsPage onShowCreateGroup={handleShowCreateGroup} onShowGroupDetail={handleShowGroupDetail} />}
+            {currentPage === 'groupProfile' && selectedGroupForDisplay && <GroupProfileDisplay
+              groupIdToDisplay={selectedGroupForDisplay.id}
+              onNavigate={handleNavigate}
+              onEditEvent={handleEditEventInModal}
+              onDeleteEvent={(eventId, isPublic, creatorId, groupId) => handleDeleteItem(eventId, 'event', isPublic, creatorId, groupId)}
+              onRemoveTagFromEvent={handleRemoveTagFromEvent}
+              onShowEventDetail={handleShowEventDetail}
+              onLikeToggle={handleLikeToggle}
+              onAddSpotToKnot={handleAddSpotToKnot}
+              onEditKnot={handleEditKnotInModal}
+              onDeleteKnot={(knotId, isPublic, creatorId, groupId) => handleDeleteItem(knotId, 'knot', isPublic, creatorId, groupId)}
+              onShowKnotDetail={handleShowKnotDetail}
+            />}
           </main>
           {
             showEventDetailModal && selectedEventForModal && (
@@ -508,7 +646,23 @@ const App = () => {
                 onLikeToggle={handleLikeToggle}
                 onShareEvent={handleShareEvent}
                 onAddSpotToKnot={handleAddSpotToKnot}
-                onEditEvent={handleEditEventInModal} // Passa la funzione per modificare uno spot dal KnotDetailModal
+                onEditEvent={handleEditEventInModal}
+              />
+            )}
+          {
+            showCreateGroupModal && (
+              <CreateGroupModal
+                onClose={() => setShowCreateGroupModal(false)}
+                onCreateSuccess={handleCreateGroupSuccess}
+              />
+            )}
+          {
+            showEditGroupModal && groupToEditInModal && (
+              <EditGroupModal
+                key={groupToEditInModal.id}
+                group={groupToEditInModal}
+                onClose={() => setShowEditGroupModal(false)}
+                onSaveSuccess={handleEditGroupSaveSuccess}
               />
             )}
           {

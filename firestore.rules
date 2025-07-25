@@ -4,7 +4,7 @@ service cloud.firestore {
 
     // Regola generica per i dati privati dell'utente.
     // Consente a un utente autenticato di leggere e scrivere solo nei propri documenti privati
-    // sotto il percorso /artifacts/{appId}/users/{userId}/
+    // sotto il percorso /artifacts/{appId}/users/{userId}/\
     match /artifacts/{appId}/users/{userId}/{documents=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
@@ -22,76 +22,22 @@ service cloud.firestore {
     // Questi eventi sono accessibili a tutti gli utenti autenticati per la lettura (feed, ricerca).
     // La creazione, l'aggiornamento e l'eliminazione sono consentite solo al creatore dell'evento.
     match /artifacts/{appId}/public/data/events/{eventId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null; // Qualsiasi utente autenticato può leggere
+
+      // Permessi per creazione, aggiornamento ed eliminazione: solo il creatore dell'evento
       allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
-
-      // Permessi specifici per aggiornamenti che non siano creazione/eliminazione completa dell'evento,
-      // ma modifiche a campi come 'likes' o 'taggedUsers' o 'knotIds'.
-      allow update: if request.auth != null && (
-        // L'utente è il creatore dell'evento (copre tutte le modifiche)
-        resource.data.creatorId == request.auth.uid ||
-
-        // Qualsiasi utente autenticato può aggiungere o rimuovere il proprio like
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
-          request.resource.data.likes is list &&
-          resource.data.likes is list &&
-          (
-            request.resource.data.likes.hasAll(resource.data.likes) || // Aggiunta di like
-            resource.data.likes.hasAll(request.resource.data.likes)    // Rimozione di like
-          )
-        ) ||
-
-        // Qualsiasi utente autenticato può rimuovere il proprio tag dall'evento.
-        // Questa regola è permissiva e permette la rimozione di un elemento dall'array taggedUsers.
-        // Per una sicurezza più stringente che permetta la rimozione SOLO del proprio tag,
-        // sarebbe necessario che `profileTag` fosse una custom claim nel token di autenticazione
-        // o una lettura aggiuntiva del profilo utente nelle regole, il che le renderebbe più complesse.
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['taggedUsers']) &&
-          request.resource.data.taggedUsers is list &&
-          resource.data.taggedUsers is list &&
-          request.resource.data.taggedUsers.size() < resource.data.taggedUsers.size() // Permette solo rimozioni
-        ) ||
-
-        // Qualsiasi utente autenticato può aggiungere/rimuovere knotIds (per aggiungere spot a knot)
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['knotIds']) &&
-          request.resource.data.knotIds is list &&
-          resource.data.knotIds is list &&
-          (
-            request.resource.data.knotIds.hasAll(resource.data.knotIds) || // Aggiunta di knotId
-            resource.data.knotIds.hasAll(request.resource.data.knotIds)    // Rimozione di knotId
-          )
-        )
-      );
+      allow update, delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
     }
 
     // Regole per la collezione di knot pubblici.
     // Questi knot sono accessibili a tutti gli utenti autenticati per la lettura.
     // La creazione, l'aggiornamento e l'eliminazione sono consentite solo al creatore del knot.
     match /artifacts/{appId}/public/data/knots/{knotId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid;
-      allow delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
+      allow read: if request.auth != null; // Qualsiasi utente autenticato può leggere
 
-      // Permessi specifici per aggiornamenti all'array spotIds (aggiunta/rimozione di spotId)
-      allow update: if request.auth != null && (
-        // Il creatore può fare qualsiasi update
-        resource.data.creatorId == request.auth.uid ||
-        
-        // Qualsiasi utente autenticato può aggiungere/rimuovere spotIds (per aggiungere spot a knot)
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['spotIds']) &&
-          request.resource.data.spotIds is list &&
-          resource.data.spotIds is list &&
-          (
-            request.resource.data.spotIds.hasAll(resource.data.spotIds) || // Aggiunta di spotId
-            resource.data.spotIds.hasAll(request.resource.data.spotIds)    // Rimozione di spotId
-          )
-        )
-      );
+      // Permessi per creazione, aggiornamento ed eliminazione: solo il creatore del knot
+      allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
     }
 
     // Regole per la sub-collezione 'comments' sotto ogni evento pubblico.
@@ -105,12 +51,9 @@ service cloud.firestore {
     }
 
     // Regole per la sub-collezione 'notifications' sotto ogni utente.
-    // Solo il proprietario delle notifiche può leggerle.
-    // Qualsiasi utente autenticato può creare una notifica per un altro utente.
+    // Solo il proprietario delle notifiche può leggerle o marcarle come lette.
     match /artifacts/{appId}/users/{userId}/notifications/{notificationId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null; // Permette a qualsiasi utente autenticato di creare una notifica
-      allow update, delete: if false; // Le notifiche non possono essere modificate o eliminate dopo la creazione
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
     // Permette la lettura della collezione 'profile' per le Collection Group Queries
@@ -120,13 +63,37 @@ service cloud.firestore {
         allow read: if request.auth != null;
     }
 
+    // NUOVE REGOLE PER I GRUPPI
+    // La collezione 'groups' conterrà i gruppi creati dagli utenti.
+    // I gruppi sono pubblici per la lettura se l'utente è autenticato.
+    // La creazione è consentita a qualsiasi utente autenticato.
+    // L'aggiornamento e l'eliminazione sono consentite solo ai membri del gruppo.
+    match /artifacts/{appId}/public/data/groups/{groupId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.creatorId == request.auth.uid;
+      // Un membro può aggiornare il gruppo. Il creatore può eliminare.
+      allow update: if request.auth != null && request.auth.uid in resource.data.members;
+      allow delete: if request.auth != null && resource.data.creatorId == request.auth.uid;
+    }
+
+    // REGOLE PER SPOT E KNOT APPARTENENTI A UN GRUPPO
+    // Questi spot/knot sono memorizzati nelle sub-collezioni private del gruppo.
+    // Solo i membri del gruppo possono leggere, creare, aggiornare ed eliminare questi spot/knot.
+    match /artifacts/{appId}/public/data/groups/{groupId}/events/{eventId} {
+      allow read, create, update, delete: if request.auth != null && get(/databases/$(database)/documents/artifacts/$(appId)/public/data/groups/$(groupId)).data.members contains request.auth.uid;
+    }
+
+    match /artifacts/{appId}/public/data/groups/{groupId}/knots/{knotId} {
+      allow read, create, update, delete: if request.auth != null && get(/databases/$(database)/documents/artifacts/$(appId)/public/data/groups/$(groupId)).data.members contains request.auth.uid;
+    }
+
+
     // Altre collezioni/documenti bloccati per default
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
-
 
 // rules_version = '2';
 // service cloud.firestore {

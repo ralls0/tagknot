@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { doc, updateDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, Timestamp, writeBatch, query, collection, where, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { useAuth } from './AuthContext';
 import AlertMessage from './AlertMessage';
 import LoadingSpinner from './LoadingSpinner';
-import { KnotType, KnotData } from '../interfaces';
+import { KnotType, KnotData, GroupType } from '../interfaces';
 
 const appId = "tagknot-app";
 
@@ -40,7 +40,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth: number, maxHeight: numbe
           ctx.drawImage(img, 0, 0, width, height);
           resolve(canvas.toDataURL('image/jpeg', 0.8));
         } else {
-          reject(new Error("Impossibile ottenere il contesto del canvas."));
+          reject(new Error("Could not get 2D context for canvas"));
         }
       };
       img.onerror = (error) => reject(error);
@@ -56,360 +56,336 @@ interface EditKnotModalProps {
 }
 
 const EditKnotModal: React.FC<EditKnotModalProps> = ({ knot, onClose, onSaveSuccess }) => {
-  const authContext = useAuth();
-  const userId = authContext?.userId;
-  const userProfile = authContext?.userProfile;
-
-  const [editTag, setEditTag] = useState(knot.tag || '');
-  const [editDescription, setEditDescription] = useState(knot.description || '');
+  const { userId, userProfile } = useAuth();
+  const [editTag, setEditTag] = useState(knot.tag);
+  const [editDescription, setEditDescription] = useState(knot.description);
   const [editCoverImageFile, setEditCoverImageFile] = useState<File | null>(null);
-  const [editCoverImageUrl, setEditCoverImageUrl] = useState(knot.coverImage || '');
-  const [editCoverImageLink, setEditCoverImageLink] = useState(knot.coverImage || '');
-  const [editStartDate, setEditStartDate] = useState(knot.startDate || '');
-  const [editEndDate, setEditEndDate] = useState(knot.endDate || '');
-  const [editLocationSearch, setEditLocationSearch] = useState(knot.locationName || '');
+  const [editCoverImageUrlInput, setEditCoverImageUrlInput] = useState(knot.coverImage || '');
   const [editLocationName, setEditLocationName] = useState(knot.locationName || '');
-  const [editLocationCoords, setEditLocationCoords] = useState<{ lat: number; lng: number } | null>(knot.locationCoords || null);
-  const [editStatus, setEditStatus] = useState<'public' | 'private' | 'internal'>(knot.status);
-  const [editMessage, setEditMessage] = useState('');
-  const [editMessageType, setEditMessageType] = useState<'success' | 'error' | ''>('');
+  const [editLocationCoords, setEditLocationCoords] = useState(knot.locationCoords || null);
+  const [editStartDate, setEditStartDate] = useState(knot.startDate);
+  const [editEndDate, setEditEndDate] = useState(knot.endDate);
+  const [editStatus, setEditStatus] = useState(knot.status);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [locationSuggestions, setLocationSuggestions] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
-  const [selectedLocationIndex, setSelectedLocationIndex] = useState(-1);
-  const [loadingLocationSuggestions, setLoadingLocationSuggestions] = useState(false);
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error' | ''>('');
 
-  // Logica per i suggerimenti di posizione
+  // NEW: Group related states
+  const [editSelectedGroupId, setEditSelectedGroupId] = useState<string | null>(knot.groupId || null);
+  const [userGroups, setUserGroups] = useState<GroupType[]>([]);
+  const [loadingUserGroups, setLoadingUserGroups] = useState(true);
+
+  // Fetch user's groups
   useEffect(() => {
     let isMounted = true;
-    const delayDebounceFn = setTimeout(async () => {
-      if (editLocationSearch.length > 2 && (!editLocationName || editLocationSearch !== editLocationName)) {
-        setLoadingLocationSuggestions(true);
-        try {
-          const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(editLocationSearch)}&addressdetails=1`);
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          const data = await response.json();
-          if (isMounted) {
-            if (data && data.length > 0) {
-              setLocationSuggestions(data.map((p: any) => ({
-                display_name: p.display_name,
-                lat: p.lat,
-                lon: p.lon
-              })));
-            } else {
-              setLocationSuggestions([]);
-            }
-          }
-        } catch (error) {
-          if (isMounted) {
-            console.error("Error fetching place suggestions from Nominatim:", error);
-            setEditMessage('Errore nel recupero dei suggerimenti di posizione.');
-            setEditMessageType('error');
-            setLocationSuggestions([]);
-          }
-        } finally {
-          if (isMounted) {
-            setLoadingLocationSuggestions(false);
-          }
-        }
-      } else {
-        if (isMounted) {
-          setLocationSuggestions([]);
-        }
+    if (!userId) {
+      if (isMounted) setLoadingUserGroups(false);
+      return;
+    }
+
+    setLoadingUserGroups(true);
+    const q = query(
+      collection(db, `artifacts/${appId}/public/data/groups`),
+      where('members', 'array-contains', userId)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (isMounted) {
+        const groups: GroupType[] = [];
+        snapshot.forEach(doc => {
+          // Correzione qui: cast a Omit<GroupType, 'id'> e poi aggiungi l'id
+          const data = doc.data() as Omit<GroupType, 'id'>;
+          groups.push({ id: doc.id, ...data });
+        });
+        setUserGroups(groups);
+        setLoadingUserGroups(false);
       }
-    }, 500);
+    }, (error) => {
+      if (isMounted) {
+        console.error("Error fetching user groups:", error);
+        setLoadingUserGroups(false);
+      }
+    });
 
     return () => {
       isMounted = false;
-      clearTimeout(delayDebounceFn);
+      unsubscribe();
     };
-  }, [editLocationSearch, editLocationName]);
+  }, [userId]);
 
-  const handleSelectLocation = (suggestion: { display_name: string; lat: string; lon: string }) => {
-    setEditLocationSearch(suggestion.display_name);
-    setEditLocationName(suggestion.display_name);
-    setEditLocationCoords({ lat: parseFloat(suggestion.lat), lng: parseFloat(suggestion.lon) });
-    setLocationSuggestions([]);
-    setSelectedLocationIndex(-1);
-    setEditMessage('');
-    setEditMessageType('');
-  };
 
-  const handleKeyDownOnLocationSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedLocationIndex((prev: number) => Math.min(prev + 1, locationSuggestions.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedLocationIndex((prev: number) => Math.max(prev - 1, 0));
-    } else if (e.key === 'Enter' && selectedLocationIndex !== -1) {
-      e.preventDefault();
-      handleSelectLocation(locationSuggestions[selectedLocationIndex]);
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setEditCoverImageFile(e.target.files[0]);
+      setEditCoverImageUrlInput('');
     }
   };
 
-  const handleSaveEdit = async (e: React.FormEvent) => {
+  const handleImageUrlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditCoverImageUrlInput(e.target.value);
+    setEditCoverImageFile(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!knot || !userId || !userProfile) {
-      setEditMessage('Errore: Dati utente o knot non disponibili.');
-      setEditMessageType('error');
-      return;
-    }
-
-    if (!editTag.trim()) {
-      setEditMessage('Il Tag (Titolo Knot) è obbligatorio.');
-      setEditMessageType('error');
-      return;
-    }
-    if (!editStartDate || !editEndDate) {
-      setEditMessage('Per favore, compila tutti i campi obbligatori (Data Inizio, Data Fine).');
-      setEditMessageType('error');
-      return;
-    }
-    if (new Date(editStartDate) > new Date(editEndDate)) {
-      setEditMessage('La Data di Inizio del Knot non può essere successiva alla Data di Fine.');
-      setEditMessageType('error');
-      return;
-    }
-    if (editLocationSearch && (!editLocationName || !editLocationCoords)) {
-      setEditMessage('Per favore, seleziona una posizione valida dai suggerimenti o lascia il campo Ricerca Posizione vuoto.');
-      setEditMessageType('error');
+    if (!userId || !userProfile) {
+      setMessage('Utente non autenticato. Impossibile salvare le modifiche.');
+      setMessageType('error');
       return;
     }
 
     setIsSaving(true);
-    setEditMessage('');
-    setEditMessageType('');
-
-    let finalCoverImageUrl = editCoverImageUrl;
-
-    if (editCoverImageLink) {
-      finalCoverImageUrl = editCoverImageLink;
-    } else if (editCoverImageFile) {
-      setIsUploadingImage(true);
-      try {
-        finalCoverImageUrl = await resizeAndConvertToBase64(editCoverImageFile, 800, 600);
-      } catch (uploadError) {
-        console.error("Error uploading image:", uploadError);
-        setEditMessage('Errore nel caricamento dell\'immagine. Riprova.');
-        setEditMessageType('error');
-        setIsSaving(false);
-        setIsUploadingImage(false);
-        return;
-      } finally {
-        setIsUploadingImage(false);
-      }
-    }
+    setMessage('');
+    setMessageType('');
+    let finalCoverImage = knot.coverImage || ''; // Default to existing image
 
     try {
+      if (editCoverImageUrlInput && editCoverImageUrlInput !== (knot.coverImage || '')) {
+        finalCoverImage = editCoverImageUrlInput;
+      } else if (editCoverImageFile) {
+        setIsUploadingImage(true);
+        finalCoverImage = await resizeAndConvertToBase64(editCoverImageFile, 800, 600);
+        setIsUploadingImage(false);
+      } else if (!editCoverImageUrlInput && !editCoverImageFile) {
+        finalCoverImage = ''; // If both cleared, remove image
+      }
+
+      const batch = writeBatch(db);
+
+      // Gestione del cambio di gruppo o stato
+      const oldGroupId = knot.groupId;
+      const newGroupId = editSelectedGroupId;
+      const newStatus = newGroupId ? 'internal' : editStatus; // Se in gruppo, lo stato è internal
+
+      // 1. Aggiorna il documento del knot nella sua posizione corrente
+      let currentKnotRef;
+      if (oldGroupId) {
+        currentKnotRef = doc(db, `artifacts/${appId}/public/data/groups/${oldGroupId}/knots`, knot.id);
+      } else {
+        currentKnotRef = doc(db, `artifacts/${appId}/users/${userId}/knots`, knot.id);
+      }
+
       const updatedKnotData: Partial<KnotData> = {
         tag: editTag,
         description: editDescription,
-        coverImage: finalCoverImageUrl,
+        coverImage: finalCoverImage,
+        locationName: editLocationName,
+        locationCoords: editLocationCoords,
         startDate: editStartDate,
         endDate: editEndDate,
-        locationName: editLocationName || undefined,
-        locationCoords: editLocationCoords || undefined,
-        status: editStatus,
+        status: newStatus, // Usa il nuovo stato (internal se in gruppo)
+        groupId: newGroupId || undefined, // Imposta il nuovo groupId o undefined se rimosso
+        createdAt: knot.createdAt, // Mantieni la data di creazione originale
       };
 
-      const privateKnotRef = doc(db, `artifacts/${appId}/users/${userId}/knots`, knot.id);
-      const publicKnotRef = doc(db, `artifacts/${appId}/public/data/knots`, knot.id);
-
-      const batch = writeBatch(db);
-      batch.update(privateKnotRef, updatedKnotData);
-
-      // Gestisci la visibilità pubblica
-      if (editStatus === 'public') {
-        // Se il knot diventa pubblico o rimane pubblico, aggiorna/crea la versione pubblica
-        batch.set(publicKnotRef, { ...knot, ...updatedKnotData, createdAt: knot.createdAt }, { merge: true });
-      } else { // editStatus is 'private' or 'internal'
-        // Se il knot era pubblico e ora non lo è più, elimina la versione pubblica
-        if (knot.status === 'public') {
-          batch.delete(publicKnotRef);
+      // Se il knot era in un gruppo e ora non lo è più, o viceversa, o cambia gruppo
+      if (oldGroupId !== newGroupId) {
+        // Se il knot era in un gruppo (oldGroupId) e ora non lo è più o cambia gruppo
+        if (oldGroupId) {
+          batch.delete(currentKnotRef); // Elimina dalla vecchia posizione del gruppo
+        } else {
+          // Se era nella collezione privata dell'utente e ora va in un gruppo
+          batch.delete(currentKnotRef); // Elimina dalla collezione privata dell'utente
         }
-        // Se era già privato/interno, non fare nulla sulla versione pubblica
+
+        // Se il knot va in un nuovo gruppo
+        if (newGroupId) {
+          const newGroupKnotRef = doc(db, `artifacts/${appId}/public/data/groups/${newGroupId}/knots`, knot.id);
+          batch.set(newGroupKnotRef, { ...knot, ...updatedKnotData, groupId: newGroupId, status: 'internal', createdAt: knot.createdAt }); // Crea nella nuova posizione del gruppo
+        } else {
+          // Se non va in nessun gruppo (torna alla collezione privata dell'utente)
+          const newUserKnotRef = doc(db, `artifacts/${appId}/users/${userId}/knots`, knot.id);
+          batch.set(newUserKnotRef, { ...knot, ...updatedKnotData, groupId: undefined, status: editStatus, createdAt: knot.createdAt }); // Crea nella collezione privata dell'utente
+        }
+
+        // Gestione della collezione pubblica globale
+        const publicKnotRef = doc(db, `artifacts/${appId}/public/data/knots`, knot.id);
+        if (oldGroupId && !newGroupId && editStatus === 'public') {
+          // Era in un gruppo, ora è privato dell'utente e pubblico: aggiungi a public/data/knots
+          batch.set(publicKnotRef, { ...knot, ...updatedKnotData, groupId: undefined, status: 'public', createdAt: knot.createdAt });
+        } else if (!oldGroupId && knot.status === 'public' && !newGroupId && editStatus !== 'public') {
+          // Era pubblico, ora è privato dell'utente e non pubblico: rimuovi da public/data/knots
+          batch.delete(publicKnotRef);
+        } else if (!oldGroupId && knot.status !== 'public' && !newGroupId && editStatus === 'public') {
+          // Era privato dell'utente, ora è pubblico: aggiungi a public/data/knots
+          batch.set(publicKnotRef, { ...knot, ...updatedKnotData, groupId: undefined, status: 'public', createdAt: knot.createdAt });
+        } else if (newGroupId) {
+          // Va in un gruppo: rimuovi da public/data/knots se presente
+          const publicDocSnap = await getDoc(publicKnotRef);
+          if (publicDocSnap.exists()) {
+            batch.delete(publicKnotRef);
+          }
+        }
+      } else {
+        // Nessun cambio di gruppo, aggiorna semplicemente il documento nella sua posizione corrente
+        // e gestisci lo stato pubblico per la collezione pubblica globale se necessario
+        batch.update(currentKnotRef, updatedKnotData);
+
+        const publicKnotRef = doc(db, `artifacts/${appId}/public/data/knots`, knot.id);
+        if (!newGroupId) { // Solo se non è in un gruppo
+          if (newStatus === 'public' && knot.status !== 'public') {
+            // Era privato dell'utente, ora è pubblico: aggiungi a public/data/knots
+            batch.set(publicKnotRef, { ...knot, ...updatedKnotData, status: 'public', createdAt: knot.createdAt });
+          } else if (newStatus !== 'public' && knot.status === 'public') {
+            // Era pubblico, ora è privato dell'utente: rimuovi da public/data/knots
+            batch.delete(publicKnotRef);
+          } else if (newStatus === 'public' && knot.status === 'public') {
+            // Era e rimane pubblico: aggiorna anche il documento pubblico
+            batch.update(publicKnotRef, updatedKnotData);
+          }
+        }
       }
 
       await batch.commit();
 
-      setEditMessage('Knot aggiornato con successo!');
-      setEditMessageType('success');
+      setMessage('Knot modificato con successo!');
+      setMessageType('success');
       onSaveSuccess();
     } catch (error) {
-      console.error("Error saving knot edits:", error);
-      setEditMessage('Errore durante il salvataggio delle modifiche al Knot: ' + (error as Error).message);
-      setEditMessageType('error');
+      console.error("Error saving knot:", error);
+      setMessage('Errore durante il salvataggio delle modifiche. Riprova.');
+      setMessageType('error');
     } finally {
       setIsSaving(false);
+      setIsUploadingImage(false);
     }
   };
 
-  const defaultCoverImage = editLocationName ?
-    `https://placehold.co/600x400/E0E0E0/888?text=${encodeURIComponent(editLocationName.split(',')[0])}` :
-    'https://placehold.co/600x400/E0E0E0/888?text=Nessuna+Immagine';
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden relative flex flex-col h-full md:h-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden relative flex flex-col max-h-[90vh]">
         <button onClick={onClose} className="absolute top-4 right-4 text-gray-600 hover:text-gray-900 z-10 p-2 rounded-full bg-white bg-opacity-75">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"> </path></svg>
         </button>
 
-        <form onSubmit={handleSaveEdit} className="flex flex-col h-full">
-          <div className="p-6 flex-grow overflow-y-auto">
-            <h3 className="text-3xl font-bold text-gray-800 mb-3">Modifica Knot</h3>
-            <AlertMessage message={editMessage} type={editMessageType} />
+        <div className="p-6 flex-grow overflow-y-auto">
+          <h3 className="text-3xl font-bold text-gray-800 mb-6 text-center">Modifica Knot</h3>
+          <AlertMessage message={message} type={messageType} />
 
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editTag"> Tag (Titolo Knot) </label>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="editTag" className="block text-sm font-medium text-gray-700 mb-1">Nome Knot</label>
               <input
                 type="text"
                 id="editTag"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
                 value={editTag}
                 onChange={(e) => setEditTag(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
                 required
               />
             </div>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editDescription"> Descrizione </label>
+            <div>
+              <label htmlFor="editDescription" className="block text-sm font-medium text-gray-700 mb-1">Descrizione</label>
               <textarea
                 id="editDescription"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
                 rows={3}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-              > </textarea>
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+              ></textarea>
             </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editCoverImageLink"> URL Immagine di Copertina (Opzionale) </label>
-              <input
-                type="text"
-                id="editCoverImageLink"
-                value={editCoverImageLink}
-                onChange={(e) => { setEditCoverImageLink(e.target.value); setEditCoverImageFile(null); }}
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800"
-                placeholder="Incolla l'URL di un'immagine"
-              />
-              <p className="text-center text-gray-500 my-2"> --OPPURE --</p>
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editCoverImageFile"> Carica Immagine di Copertina (Opzionale) </label>
+            <div>
+              <label htmlFor="editCoverImageFile" className="block text-sm font-medium text-gray-700 mb-1">Immagine di Copertina Knot (Carica File)</label>
               <input
                 type="file"
                 id="editCoverImageFile"
                 accept="image/*"
-                onChange={(e) => { setEditCoverImageFile(e.target.files ? e.target.files[0] : null); setEditCoverImageLink(''); }}
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 text-gray-800 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                onChange={handleImageChange}
+                className="w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                disabled={!!editCoverImageUrlInput}
+              />
+              <p className="text-center text-gray-500 my-2">O</p>
+              <label htmlFor="editCoverImageUrl" className="block text-sm font-medium text-gray-700 mb-1">Immagine di Copertina Knot (da URL)</label>
+              <input
+                type="url"
+                id="editCoverImageUrl"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                value={editCoverImageUrlInput}
+                onChange={(e) => setEditCoverImageUrlInput(e.target.value)}
+                placeholder="Es. https://example.com/knot_image.jpg"
+                disabled={!!editCoverImageFile}
               />
               {isUploadingImage && (
-                <div className="flex items-center justify-center mt-4 text-gray-600">
-                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-500 mr-3"> </div>
+                <div className="flex items-center justify-center mt-2 text-gray-600">
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-gray-500 mr-3"></div>
                   Caricamento immagine...
                 </div>
               )}
-              {
-                (editCoverImageUrl && !editCoverImageFile && !editCoverImageLink) || (editCoverImageLink && !editCoverImageFile) ? (
-                  <div className="mt-4">
-                    <p className="text-sm text-gray-600 mb-2"> Immagine attuale: </p>
-                    <img src={editCoverImageLink || editCoverImageUrl} alt="Anteprima copertina" className="w-32 h-32 object-cover rounded-lg border border-gray-300" />
-                  </div>
-                ) : editCoverImageFile && (
-                  <div className="mt-4">
-                    <p className="text-sm text-gray-600 mb-2"> Anteprima file selezionato: </p>
-                    <img src={URL.createObjectURL(editCoverImageFile)} alt="Anteprima copertina" className="w-32 h-32 object-cover rounded-lg border border-gray-300" />
-                  </div>
-                )}
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label htmlFor="editLocationName" className="block text-sm font-medium text-gray-700 mb-1">Posizione Principale Knot (Opzionale)</label>
+              <input
+                type="text"
+                id="editLocationName"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                value={editLocationName}
+                onChange={(e) => setEditLocationName(e.target.value)}
+                placeholder="Es. Alpi Italiane"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editStartDate"> Data Inizio </label>
+                <label htmlFor="editStartDate" className="block text-sm font-medium text-gray-700 mb-1">Data Inizio</label>
                 <input
                   type="date"
                   id="editStartDate"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
                   value={editStartDate}
                   onChange={(e) => setEditStartDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editEndDate"> Data Fine </label>
+                <label htmlFor="editEndDate" className="block text-sm font-medium text-gray-700 mb-1">Data Fine</label>
                 <input
                   type="date"
                   id="editEndDate"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
                   value={editEndDate}
                   onChange={(e) => setEditEndDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
                   required
                 />
               </div>
             </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editLocationSearch"> Ricerca Posizione (Opzionale) </label>
-              <input
-                type="text"
-                id="editLocationSearch"
-                value={editLocationSearch}
-                onChange={(e) => {
-                  setEditLocationSearch(e.target.value);
-                  if (e.target.value !== editLocationName) {
-                    setEditLocationName('');
-                    setEditLocationCoords(null);
-                  }
-                  setSelectedLocationIndex(-1);
-                }}
-                onKeyDown={handleKeyDownOnLocationSearch}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-                placeholder="Cerca città, indirizzo..."
-              />
-              {
-                loadingLocationSuggestions && (
-                  <div className="flex items-center justify-center mt-2 text-gray-600">
-                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-500 mr-2"> </div>
-                    Caricamento suggerimenti...
-                  </div>
-                )
-              }
-              {locationSuggestions.length > 0 && !(editLocationSearch === editLocationName && editLocationCoords) && (
-                <ul className="bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                  {
-                    locationSuggestions.map((suggestion, index) => (
-                      <li
-                        key={`${suggestion.lat}-${suggestion.lon}-${index}`}
-                        className={`px-4 py-2 cursor-pointer hover:bg-gray-100 ${index === selectedLocationIndex ? 'bg-gray-100' : ''}`}
-                        onClick={() => handleSelectLocation(suggestion)}
-                      >
-                        {suggestion.display_name}
-                      </li>
-                    ))}
-                </ul>
+            <div>
+              <label htmlFor="editKnotGroupId" className="block text-sm font-medium text-gray-700 mb-1">Associa a un Gruppo (Opzionale)</label>
+              {loadingUserGroups ? (
+                <div className="flex items-center text-gray-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-gray-500 mr-2"></div>
+                  Caricamento gruppi...
+                </div>
+              ) : (
+                <select
+                  id="editKnotGroupId"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  value={editSelectedGroupId || ''}
+                  onChange={(e) => setEditSelectedGroupId(e.target.value || null)}
+                >
+                  <option value="">Nessun Gruppo</option>
+                  {userGroups.map(group => (
+                    <option key={group.id} value={group.id}>{group.name}</option>
+                  ))}
+                </select>
               )}
-              {
-                editLocationName && (
-                  <p className="text-sm text-gray-600 mt-2"> Posizione selezionata: <span className="font-semibold"> {editLocationName} </span></p>
-                )
-              }
             </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="editStatus"> Stato del Knot </label>
-              <select
-                id="editStatus"
-                value={editStatus}
-                onChange={(e) => setEditStatus(e.target.value as 'public' | 'private' | 'internal')}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
-              >
-                <option value="public">Pubblico (visibile a tutti)</option>
-                <option value="private">Privato (visibile solo a te)</option>
-                <option value="internal">Interno (visibile a gruppi specifici - funzionalità futura)</option>
-              </select>
-            </div>
-          </div>
+            {!editSelectedGroupId && ( // Mostra solo se non è associato a un gruppo
+              <div>
+                <label htmlFor="editStatus" className="block text-sm font-medium text-gray-700 mb-1">Stato Knot</label>
+                <select
+                  id="editStatus"
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as 'public' | 'private' | 'internal')}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+                >
+                  <option value="public">Pubblico (visibile a tutti)</option>
+                  <option value="private">Privato (visibile solo a te)</option>
+                  <option value="internal">Interno (visibile a gruppi specifici - funzionalità futura)</option>
+                </select>
+              </div>
+            )}
+          </form>
           <div className="p-6 border-t border-gray-200 flex justify-end space-x-4">
             <button
               type="button"
@@ -421,13 +397,14 @@ const EditKnotModal: React.FC<EditKnotModalProps> = ({ knot, onClose, onSaveSucc
             </button>
             <button
               type="submit"
+              onClick={handleSubmit} // Aggiunto onClick per il submit del form
               className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
               disabled={isSaving || isUploadingImage}
             >
               {isSaving ? 'Salvataggio...' : 'Salva Modifiche'}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

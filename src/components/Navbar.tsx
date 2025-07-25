@@ -59,6 +59,13 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificatio
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
           </button>
           <button
+            onClick={() => onNavigate('groups')}
+            className="text-gray-600 hover:text-gray-900 p-2 rounded-md transition-colors duration-200"
+            aria-label="Gruppi"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12c1.657 0 3-1.343 3-3S13.657 6 12 6s-3 1.343-3 3 1.343 3 3 3z" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18v-1a4 4 0 014-4h4a4 4 0 014 4v1" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.5 11a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2 18v-1.5a3.5 3.5 0 013.5-3.5h.5" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.5 11a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M22 18v-1.5a3.5 3.5 0 00-3.5-3.5h-.5" /></svg>
+          </button>
+          <button
             onClick={() => onNavigate('notifications')}
             className="text-gray-600 hover:text-gray-900 p-2 rounded-md relative transition-colors duration-200"
             aria-label="Notifiche"
@@ -146,12 +153,12 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificatio
       {/* Barra di navigazione inferiore per schermi piccoli (mobile/tablet) */}
       <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg md:hidden flex justify-around items-center h-16 border-t border-gray-200">
         <button
-          onClick={() => onNavigate('myProfile')}
+          onClick={() => onNavigate('groups')}
           className="flex flex-col items-center text-gray-600 hover:text-gray-900 p-2 rounded-md transition-colors duration-200"
-          aria-label="Mio Profilo"
+          aria-label="Gruppi"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-          <span className="text-xs mt-1">Profilo</span>
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12c1.657 0 3-1.343 3-3S13.657 6 12 6s-3 1.343-3 3 1.343 3 3 3z" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18v-1a4 4 0 014-4h4a4 4 0 014 4v1" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.5 11a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2 18v-1.5a3.5 3.5 0 013.5-3.5h.5" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.5 11a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" /> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M22 18v-1.5a3.5 3.5 0 00-3.5-3.5h-.5" /></svg>
+          <span className="text-xs mt-1">Gruppi</span>
         </button>
         <button
           onClick={() => onNavigate('createEvent')}
@@ -160,6 +167,14 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onLogout, unreadNotificatio
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
           <span className="text-xs mt-1">Crea Spot</span>
+        </button>
+        <button
+          onClick={() => onNavigate('myProfile')}
+          className="flex flex-col items-center text-gray-600 hover:text-gray-900 p-2 rounded-md transition-colors duration-200"
+          aria-label="Mio Profilo"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+          <span className="text-xs mt-1">Profilo</span>
         </button>
       </div>
     </nav>
