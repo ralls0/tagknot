@@ -195,7 +195,7 @@ const SpotCalendar: React.FC<SpotCalendarProps> = ({ spots, knots, onShowSpotDet
                       />
                     )}
                   </div>
-                  <div className="flex-grow">
+                  <div className="flex-grow min-w-0">
                     <p className="font-semibold text-gray-800 text-lg sm:text-xl">
                       {item.type === 'event' ? `${(item as EventType).tag}` : `Knot: ${(item as KnotType).tag}`}
                     </p>
