@@ -7,9 +7,10 @@ interface KnotCardProps {
   onEditKnot: (knot: KnotType) => void;
   onDeleteKnot: (knotId: string) => Promise<void>;
   onShowKnotDetail: (knot: KnotType) => void; // Nuova prop
+  onLikeToggle: (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => Promise<void>;
 }
 
-const KnotCard: React.FC<KnotCardProps> = ({ knot, onEditKnot, onDeleteKnot, onShowKnotDetail }) => {
+const KnotCard: React.FC<KnotCardProps> = ({ knot, onEditKnot, onDeleteKnot, onShowKnotDetail, onLikeToggle }) => {
   const [showMenu, setShowMenu] = useState(false);
 
   const defaultCoverImage = knot.locationName ?

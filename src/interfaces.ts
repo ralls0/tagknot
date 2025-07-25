@@ -138,6 +138,8 @@ export interface KnotDetailModalProps {
   onShareEvent: (event: EventType) => void;
   onAddSpotToKnot: (spot: EventType) => void;
   onEditEvent: (event: EventType) => void;
+  onDeleteEvent: (eventId: string, isPublic: boolean, creatorId: string, groupId?: string) => Promise<void>;
+  onRemoveTagFromEvent: (eventId: string) => Promise<void>;
 }
 
 // NEW: Group Interfaces
@@ -182,7 +184,8 @@ export interface GroupProfileDisplayProps {
   onAddSpotToKnot: (spot: EventType) => void;
   onEditKnot: (knot: KnotType) => void;
   onDeleteKnot: (knotId: string, isPublic: boolean, creatorId: string, groupId?: string) => Promise<void>;
-  onShowKnotDetail: (knot: KnotType) => void; // Aggiunta la prop
+  onShowKnotDetail: (knot: KnotType) => void;
+  onEditGroupModal: (groupId: string) => void;
 }
 
 export interface UserProfileDisplayProps {

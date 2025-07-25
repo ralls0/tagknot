@@ -24,6 +24,7 @@ const GroupProfileDisplay: React.FC<GroupProfileDisplayProps> = ({
   onEditKnot,
   onDeleteKnot,
   onShowKnotDetail,
+  onEditGroupModal,
 }) => {
   const { currentUser, userId, userProfile, loading: authLoading } = useAuth();
   const [group, setGroup] = useState<GroupType | null>(null);
@@ -127,6 +128,7 @@ const GroupProfileDisplay: React.FC<GroupProfileDisplayProps> = ({
   // Funzione per gestire la modifica del gruppo
   const handleEditGroup = () => {
     if (group) {
+      onEditGroupModal(group.id);
       onNavigate('editGroup', group.id); // Passa l'ID del gruppo al navigatore
     }
   };
@@ -174,7 +176,7 @@ const GroupProfileDisplay: React.FC<GroupProfileDisplayProps> = ({
             {isGroupCreator && (
               <div className="mt-4 flex justify-center sm:justify-start space-x-3">
                 <button
-                  onClick={handleEditGroup}
+                  onClick={() => {onEditGroupModal(group.id);}}
                   className="bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md"
                 >
                   Modifica Gruppo
@@ -269,6 +271,7 @@ const GroupProfileDisplay: React.FC<GroupProfileDisplayProps> = ({
                       onEditKnot={onEditKnot}
                       onDeleteKnot={(knotId) => onDeleteKnot(knotId, knot.status === 'public', knot.creatorId, knot.groupId)} // Passa groupId
                       onShowKnotDetail={onShowKnotDetail}
+                      onLikeToggle={onLikeToggle}
                     />
                   ))
                 ) : (

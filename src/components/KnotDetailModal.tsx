@@ -8,7 +8,7 @@ import { KnotType, EventType, KnotDetailModalProps, EventData } from '../interfa
 
 const appId = "tagknot-app";
 
-const KnotDetailModal: React.FC<KnotDetailModalProps> = ({ knot, onClose, onShowEventDetail, onLikeToggle, onShareEvent, onAddSpotToKnot, onEditEvent }) => {
+const KnotDetailModal: React.FC<KnotDetailModalProps> = ({ knot, onClose, onShowEventDetail, onDeleteEvent, onLikeToggle, onRemoveTagFromEvent, onShareEvent, onAddSpotToKnot, onEditEvent }) => {
   const { currentUser, userId, userProfile } = useAuth();
   const [associatedSpots, setAssociatedSpots] = useState<EventType[]>([]);
   const [loadingSpots, setLoadingSpots] = useState(true);
@@ -152,14 +152,12 @@ const KnotDetailModal: React.FC<KnotDetailModalProps> = ({ knot, onClose, onShow
                     // Passa funzioni asincrone vuote per conformità al tipo
                     onFollowToggle={async () => {}}
                     followingUsers={userProfile?.following || []}
-                    onEdit={onEditEvent}
-                    // Passa funzioni asincrone vuote per conformità al tipo
-                    onDelete={async () => {}}
+                    onEdit={() => onEditEvent(spot)}
+                    onDelete={() => onDeleteEvent(spot.id, spot.isPublic, spot.creatorId, spot.groupId)}
                     isProfileView={true}
-                    onLikeToggle={onLikeToggle}
-                    onShowEventDetail={onShowEventDetail}
-                    // Passa funzioni asincrone vuote per conformità al tipo
-                    onRemoveTag={async () => {}}
+                    onLikeToggle={(eventId, isLiked) => onLikeToggle(eventId, isLiked, spot.isPublic, spot.creatorId)}
+                    onShowEventDetail={(e, r, t, s) => onShowEventDetail(e, r, t, s)}
+                    onRemoveTag={(eId) => onRemoveTagFromEvent(eId)}
                     onAddSpotToKnot={onAddSpotToKnot}
                   />
                 ))}

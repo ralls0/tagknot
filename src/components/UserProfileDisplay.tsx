@@ -283,7 +283,8 @@ const UserProfileDisplay: React.FC<UserProfileDisplayProps> = ({
                       knot={knot}
                       onEditKnot={onEditKnot}
                       onDeleteKnot={(knotId) => onDeleteKnot(knotId, knot.status === 'public', knot.creatorId, knot.groupId)}
-                      onShowKnotDetail={onShowKnotDetail} // Passa la prop
+                      onShowKnotDetail={onShowKnotDetail}
+                      onLikeToggle={onLikeToggle}
                     />
                   ))
                 ) : (

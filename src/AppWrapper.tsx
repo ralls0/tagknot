@@ -290,90 +290,93 @@ const App = () => {
   };
 
   // Modificata per gestire like su eventi pubblici e privati
-  const handleLikeToggle = async (eventId: string, isLiked: boolean, eventIsPublic: boolean, eventCreatorId: string) => {
+  const handleLikeToggle = async (
+    eventId: string,
+    isLiked: boolean,
+    eventIsPublic: boolean,
+    eventCreatorId: string
+  ) => {
     if (!currentUser || !userId || !userProfile) return;
-
+  
     const batch = writeBatch(db);
     const likeUpdate = isLiked ? arrayRemove(userId) : arrayUnion(userId);
-
+  
     let eventDocRef;
     let eventData: EventData | undefined;
-
-    // 1. Prova a recuperare l'evento dalla collezione pubblica globale
+    let updatedEventSnap;
+  
+    // Tentativi ordinati: pubblico → privato → gruppo (se esiste selectedEventForModal.groupId)
     const publicEventRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
-    const publicEventSnap = await getDoc(publicEventRef);
-
-    if (publicEventSnap.exists()) {
+    const publicSnap = await getDoc(publicEventRef);
+    if (publicSnap.exists()) {
       eventDocRef = publicEventRef;
-      eventData = publicEventSnap.data() as EventData;
-    } else {
-      // 2. Se non è pubblico, prova a recuperarlo dalla collezione privata del creatore
-      const privateEventRef = doc(db, `artifacts/${appId}/users/${eventCreatorId}/events`, eventId);
-      const privateEventSnap = await getDoc(privateEventRef);
-
-      if (privateEventSnap.exists()) {
-        eventDocRef = privateEventRef;
-        eventData = privateEventSnap.data() as EventData;
-      } else {
-        // 3. Se non è né pubblico né privato dell'utente, prova a cercarlo in tutti i gruppi (tramite collectionGroup)
-        // Questa parte è più complessa perché collectionGroup non supporta getDoc diretto per ID.
-        // Dobbiamo fare una query e poi filtrare.
-        const groupEventsQuery = query(collectionGroup(db, 'events'), where('__name__', '==', `artifacts/${appId}/public/data/groups/${eventCreatorId}/events/${eventId}`)); // This line is incorrect as __name__ needs full path
-        // Correction: We need to iterate through possible group paths if we don't have groupId
-        // Given that eventCreatorId is passed, it's more likely the event is either in public/data/events
-        // or in users/eventCreatorId/events. If it's a group event, the groupId should ideally be passed.
-        // For now, let's assume eventCreatorId is sufficient for private events.
-        // If it's a group event, the event object itself should carry groupId.
-        // Let's refine the logic to check for groupId in the existing selectedEventForModal or event object.
-
-        // If the event object already has a groupId, we can construct the path directly
-        if (selectedEventForModal?.groupId) {
-          const groupEventRef = doc(db, `artifacts/${appId}/public/data/groups/${selectedEventForModal.groupId}/events`, eventId);
-          const groupEventSnap = await getDoc(groupEventRef);
-          if (groupEventSnap.exists()) {
-            eventDocRef = groupEventRef;
-            eventData = groupEventSnap.data() as EventData;
-          }
-        }
-
-        if (!eventDocRef) {
-          console.warn("Evento non trovato in nessuna collezione per il toggle like.");
-          return;
-        }
+      eventData = publicSnap.data() as EventData;
+    }
+  
+    const privateEventRef = doc(db, `artifacts/${appId}/users/${eventCreatorId}/events`, eventId);
+    const privateSnap = !eventDocRef ? await getDoc(privateEventRef) : null;
+    if (!eventDocRef && privateSnap?.exists()) {
+      eventDocRef = privateEventRef;
+      eventData = privateSnap.data() as EventData;
+    }
+  
+    const groupId = selectedEventForModal?.groupId;
+    let groupEventRef;
+    if (!eventDocRef && groupId) {
+      groupEventRef = doc(db, `artifacts/${appId}/public/data/groups/${groupId}/events`, eventId);
+      const groupSnap = await getDoc(groupEventRef);
+      if (groupSnap.exists()) {
+        eventDocRef = groupEventRef;
+        eventData = groupSnap.data() as EventData;
       }
     }
-
+  
     if (!eventDocRef || !eventData) {
-      console.warn("Documento evento non trovato o dati mancanti per il toggle like.");
+      console.warn("Evento non trovato in nessuna collezione per il toggle like.");
       return;
     }
-
-    batch.update(eventDocRef, {
-      likes: likeUpdate
-    });
-
+  
+    // Aggiorna il documento trovato
+    batch.update(eventDocRef, { likes: likeUpdate });
+  
+    // Se l'evento è pubblico, prova ad aggiornare anche la versione privata se sei il creatore
+    if (eventIsPublic && eventCreatorId === userId) {
+      if (!privateSnap) {
+        const freshPrivateSnap = await getDoc(privateEventRef);
+        if (freshPrivateSnap.exists()) {
+          batch.update(privateEventRef, { likes: likeUpdate });
+        }
+      } else {
+        batch.update(privateEventRef, { likes: likeUpdate });
+      }
+    }
+  
     try {
       await batch.commit();
-
-      // Dopo l'aggiornamento di Firestore, recupera l'evento aggiornato e aggiorna lo stato del modale
-      let updatedEventSnap = await getDoc(eventDocRef); // Recupera dal percorso che è stato effettivamente modificato
-
-      if (updatedEventSnap && updatedEventSnap.exists()) {
-        handleUpdateSelectedEvent({ id: updatedEventSnap.id, ...(updatedEventSnap.data() as EventData) } as EventType);
+  
+      // Recupera il documento aggiornato dallo stesso riferimento modificato
+      updatedEventSnap = await getDoc(eventDocRef);
+      if (updatedEventSnap.exists()) {
+        handleUpdateSelectedEvent({
+          id: updatedEventSnap.id,
+          ...(updatedEventSnap.data() as EventData),
+        } as EventType);
       }
-
-      // Logica per la notifica solo se non è il proprio evento e se è stato aggiunto un like (non rimosso)
+  
+      // Notifica solo se non è il proprio evento e si è messo un like
       if (eventCreatorId !== userId && !isLiked) {
+        const eventInfo = updatedEventSnap.data() as EventData;
+  
         const notificationData: NotificationData = {
-          type: 'like',
+          type: "like",
           fromUserId: userId,
           fromUsername: userProfile.username,
-          eventId: eventId,
-          eventTag: eventData?.tag || selectedEventForModal?.tag || 'N/A',
-          message: `${userProfile.username} ha messo "Mi piace" al tuo evento: ${eventData?.tag || selectedEventForModal?.tag || 'N/A'}`,
+          eventId,
+          eventTag: eventInfo?.tag || selectedEventForModal?.tag || "N/A",
+          message: `${userProfile.username} ha messo "Mi piace" al tuo evento: ${eventInfo?.tag || selectedEventForModal?.tag || "N/A"}`,
           createdAt: serverTimestamp() as Timestamp,
           read: false,
-          imageUrl: eventData?.coverImage || selectedEventForModal?.coverImage || '',
+          imageUrl: eventInfo?.coverImage || selectedEventForModal?.coverImage || "",
         };
         await addDoc(collection(db, `artifacts/${appId}/users/${eventCreatorId}/notifications`), notificationData);
       }
@@ -606,6 +609,7 @@ const App = () => {
               onEditKnot={handleEditKnotInModal}
               onDeleteKnot={(knotId, isPublic, creatorId, groupId) => handleDeleteItem(knotId, 'knot', isPublic, creatorId, groupId)}
               onShowKnotDetail={handleShowKnotDetail}
+              onEditGroupModal={handleEditGroupInModal}
             />}
           </main>
           {
@@ -661,6 +665,8 @@ const App = () => {
                 onShareEvent={handleShareEvent}
                 onAddSpotToKnot={handleAddSpotToKnot}
                 onEditEvent={handleEditEventInModal}
+                onRemoveTagFromEvent={handleRemoveTagFromEvent}
+                onDeleteEvent={(eventId, isPublic, creatorId, groupId) => handleDeleteItem(eventId, 'event', isPublic, creatorId, groupId)}
               />
             )}
           {
