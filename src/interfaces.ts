@@ -160,6 +160,12 @@ export interface GroupsPageProps {
   onShowGroupDetail: (group: GroupType) => void;
 }
 
+// NEW: GroupCardProps
+export interface GroupCardProps {
+  group: GroupType;
+  onShowGroupDetail: (group: GroupType) => void;
+}
+
 export interface CreateGroupModalProps {
   onClose: () => void;
   onCreateSuccess: (groupId: string) => void;
