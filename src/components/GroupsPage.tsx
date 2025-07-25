@@ -64,8 +64,8 @@ const GroupsPage: React.FC<GroupsPageProps> = ({ onShowGroupDetail, onShowCreate
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8 pt-20"> {/* Aggiunto pt-20 per Navbar */}
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden p-6 sm:p-8">
+    <div className="pt-20 pb-16 md:pt-24 md:pb-8 bg-gray-100 min-h-screen"> {/* Aggiunto pt-20 per Navbar */}
+      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 mt-8">
         <h2 className="text-3xl font-extrabold text-gray-800 text-center mb-6">I Miei Gruppi</h2>
         <AlertMessage message={message} type={messageType} />
 

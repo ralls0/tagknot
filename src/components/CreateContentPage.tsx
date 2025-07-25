@@ -462,7 +462,7 @@ const CreateContentPage: React.FC<CreateContentPageProps> = ({ onEventCreated, o
 
   return (
     <div className="pt-20 pb-20 md:pt-24 md:pb-8 bg-gray-100 min-h-screen text-gray-800 p-4"> {/* Aumentato pt-40 per maggiore spazio */}
-      <div className="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-xl border border-gray-200">
+      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl border border-gray-200 p-6 sm:p-8 mt-8">
         <div className="p-6 sm:p-8">
           <h2 className="text-3xl font-extrabold text-gray-800 text-center mb-6">
             Crea Nuovo {contentType === 'spot' ? 'Spot' : 'Knot'}
